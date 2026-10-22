@@ -17,5 +17,13 @@
   "devDependencies": {
     "vite": "7.1.12",
     "vite-plugin-pwa": "1.1.0"
+  },
+  "overrides": {
+    "onnxruntime-node": {
+      "global-agent": "4.1.3"
+    },
+    "workbox-build": {
+      "glob": "13.0.6"
+    }
   }
 }

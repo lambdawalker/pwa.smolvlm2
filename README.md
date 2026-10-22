@@ -116,3 +116,7 @@ Images are resized and processed sequentially on the device. Stop keeps complete
 Results and selected photos stay in memory for the current visit; refreshing clears them. No files are uploaded, moved, or changed in the phone gallery. Only small processed thumbnails are kept alongside the selected File references. Full-size decoded images are handled one at a time. Classification accuracy must be evaluated on your photos; the small model can misclassify them.
 
 The previous single-photo experience, including all five model choices and custom prompts, is available at `describe.html` through **Describe a photo**. Both pages are included in the production build and service-worker precache.
+
+## Dependency maintenance
+
+`package.json` scopes two overrides to their upstream consumers: `onnxruntime-node` uses `global-agent` 4.1.3 to remove the abandoned `boolean` dependency, and `workbox-build` uses `glob` 13.0.6 instead of deprecated glob 11. The ONNX runtime and Transformers.js versions are unchanged. Keep `package-lock.json` committed and use `npm ci` for reproducible installs. Revisit these overrides when upgrading the parent packages. These overrides address the deprecation warnings; they do not resolve every finding reported by `npm audit`.
