@@ -9,3 +9,5 @@ test-results/
 backend/build/
 infra/Pulumi.*.yaml
 !infra/Pulumi.example.yaml
+
+.deploy/

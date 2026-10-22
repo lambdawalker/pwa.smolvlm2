@@ -88,3 +88,5 @@ On opening the app, a setup screen checks WebGPU and automatically downloads or 
 See [the AWS deployment guide](docs/aws-deployment.md) for Windows-friendly setup, build, preview, deployment, updates, and cleanup. The stack provides CloudFront HTTPS + private S3 for the PWA and an API Gateway + Go Lambda backend at `/api/*`. Build everything with `npm run build:aws`, then deploy from `infra/` with Pulumi. Inference remains on the device.
 
 Deploy to **audit.apexfission.com** using `.\deploy.bat` on Windows or `sh ./deploy.sh` on Linux/macOS. The Go wizard guides AWS/Pulumi authentication, Cloudflare DNS setup, builds, preview, and deployment confirmation. See the deployment guide for prerequisites and the scoped Cloudflare API token.
+
+The wizard defaults to **S3-backed Pulumi state** with a private versioned bucket and AWS KMS secrets. It remembers non-secret setup in `.deploy/settings.json` and reuses the encrypted Cloudflare token. Subsequent runs skip setup questions; use `--configure` to review the saved defaults. The state bucket/key are prepared before the application preview and retained independently of the app.

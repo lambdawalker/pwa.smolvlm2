@@ -145,50 +145,59 @@ func wizard() error {
 	if err = run(root, "go", "version"); err != nil {
 		return err
 	}
-	profile, err := ask("AWS profile (blank uses current credential chain)", os.Getenv("AWS_PROFILE"))
+	settingsPath := filepath.Join(root, ".deploy", "settings.json")
+	saved, err := loadSettings(settingsPath)
+	if err != nil {
+		return fmt.Errorf("read saved setup: %w", err)
+	}
+	configure := false
+	for _, arg := range os.Args[1:] {
+		if arg == "--configure" {
+			configure = true
+		} else {
+			return fmt.Errorf("unknown option %s (supported: --configure)", arg)
+		}
+	}
+	profileDefault := os.Getenv("AWS_PROFILE")
+	if profileDefault == "" {
+		profileDefault = "auto"
+	}
+	profile, err := choose("AWS profile (auto = current credentials)", saved.Profile, profileDefault, configure)
 	if err != nil {
 		return err
 	}
-	if profile != "" {
+	if profile != "auto" {
 		if err = os.Setenv("AWS_PROFILE", profile); err != nil {
 			return err
 		}
 	}
-	if err = run(root, "aws", "sts", "get-caller-identity"); err != nil {
-		return fmt.Errorf("AWS authentication failed; run aws sso login --profile YOUR_PROFILE, then restart the wizard")
+	identity, err := output(root, "aws", "sts", "get-caller-identity", "--output", "json")
+	if err != nil {
+		return fmt.Errorf("AWS authentication failed; run aws sso login for your profile and rerun")
 	}
-	if err = run(infra, "pulumi", "whoami"); err != nil {
-		fmt.Println("Log in to your Pulumi state backend. Choose 'cloud' for Pulumi Cloud, 'local' for this computer, or enter a backend URL.")
-		backend, e := ask("Pulumi backend", "cloud")
-		if e != nil {
-			return e
-		}
-		args := []string{"login"}
-		if backend == "local" {
-			args = append(args, "--local")
-		} else if backend != "cloud" {
-			args = append(args, backend)
-		}
-		if err = run(infra, "pulumi", args...); err != nil {
-			return err
-		}
+	var caller struct {
+		Account string
+		Arn     string
 	}
-	fmt.Println("2/6 Select stack and hostname")
-	stack, err := ask("Pulumi stack (existing or new)", "dev")
+	if err = json.Unmarshal(identity, &caller); err != nil {
+		return err
+	}
+	fmt.Printf("AWS account: %s\nIdentity: %s\n", caller.Account, caller.Arn)
+	if saved.Account != "" && saved.Account != caller.Account {
+		return fmt.Errorf("AWS account differs from saved setup (%s); use the original credentials", saved.Account)
+	}
+	region, err := choose("AWS region", saved.Region, "us-east-1", configure)
 	if err != nil {
 		return err
 	}
-	if strings.HasPrefix(stack, "-") {
-		return fmt.Errorf("invalid stack name")
-	}
-	if err = run(infra, "pulumi", "stack", "select", "--create", stack); err != nil {
-		return err
-	}
-	region, err := ask("AWS region", configValue(infra, "aws:region", "us-east-1"))
+	stack, err := choose("Pulumi stack", saved.Stack, "dev", configure)
 	if err != nil {
 		return err
 	}
-	domain, err := ask("Site hostname", configValue(infra, "domain", "audit.apexfission.com"))
+	if strings.HasPrefix(stack, "-") || strings.Contains(stack, "/") {
+		return fmt.Errorf("use a simple stack name such as dev")
+	}
+	domain, err := choose("Site hostname", saved.Domain, "audit.apexfission.com", configure)
 	if err != nil {
 		return err
 	}
@@ -196,11 +205,84 @@ func wizard() error {
 	if !validDomain(domain) {
 		return fmt.Errorf("use a valid subdomain of apexfission.com, such as audit.apexfission.com")
 	}
+	bucket, err := choose("S3 state bucket", saved.StateBucket, "little-lens-state-"+caller.Account+"-"+region, configure)
+	if err != nil {
+		return err
+	}
+	if !validBucket(bucket) {
+		return fmt.Errorf("state bucket must be 3–63 lowercase letters, digits or hyphens")
+	}
+	if saved.StateBucket != "" && (bucket != saved.StateBucket || region != saved.Region || stack != saved.Stack) {
+		return fmt.Errorf("changing state bucket, region or stack requires deliberate state migration; see the deployment guide")
+	}
+	setup := settings{Profile: profile, Account: caller.Account, Region: region, Stack: stack, Domain: domain, StateBucket: bucket, KMSKey: saved.KMSKey}
+	fmt.Println("2/6 Prepare S3 state backend and KMS secrets")
+	// Do not silently create a duplicate stack when upgrading an existing deployment.
+	currentBackend, _ := command(infra, "pulumi", "whoami", "--verbose").Output()
+	sameBackend := strings.Contains(string(currentBackend), "s3://"+setup.StateBucket+"/little-lens")
+	if saved.StateBucket == "" && !sameBackend {
+		cmd := command(infra, "pulumi", "stack", "export", "--stack", stack, "--non-interactive")
+		if data, e := cmd.Output(); e == nil {
+			var state struct {
+				Deployment struct{ Resources []json.RawMessage }
+			}
+			if json.Unmarshal(data, &state) == nil && len(state.Deployment.Resources) > 1 {
+				return fmt.Errorf("existing stack found in the previous backend; migrate its state before using the S3 wizard (see docs/aws-deployment.md)")
+			}
+		}
+	}
+	fmt.Printf("State: %s\nA private versioned state bucket and KMS key are prepared before the application preview.\n", backendURL(setup))
+	if err = ensureState(root, &setup); err != nil {
+		return err
+	}
+	if err = saveSettings(settingsPath, setup); err != nil {
+		return err
+	}
+	if err = os.Setenv("PULUMI_BACKEND_URL", backendURL(setup)); err != nil {
+		return err
+	}
+	if err = run(infra, "pulumi", "login", backendURL(setup), "--non-interactive"); err != nil {
+		return err
+	}
+	// List first so authentication/backend errors are never treated as a missing stack.
+	listing, err := output(infra, "pulumi", "stack", "ls", "--json", "--non-interactive")
+	if err != nil {
+		return err
+	}
+	var stacks []struct {
+		Name string `json:"name"`
+	}
+	if err = json.Unmarshal(listing, &stacks); err != nil {
+		return err
+	}
+	exists := false
+	for _, entry := range stacks {
+		if entry.Name == stack {
+			exists = true
+		}
+	}
+	if exists {
+		err = run(infra, "pulumi", "stack", "select", stack, "--non-interactive")
+	} else {
+		err = run(infra, "pulumi", "stack", "init", stack, "--secrets-provider", secretsURL(setup), "--non-interactive")
+	}
+	if err != nil {
+		return err
+	}
+	// Restore stack configuration (including encrypted secrets) on a new checkout.
+	if _, statErr := os.Stat(filepath.Join(infra, "Pulumi."+stack+".yaml")); exists && os.IsNotExist(statErr) {
+		if err = run(infra, "pulumi", "config", "refresh", "--force", "--non-interactive"); err != nil {
+			return err
+		}
+	}
 	fmt.Println("3/6 Check Cloudflare DNS access")
 	fmt.Println("Use an API token scoped to apexfission.com with Zone:Read and DNS:Edit. Do not use the Global API Key.")
 	token := os.Getenv("CLOUDFLARE_API_TOKEN")
 	if token == "" {
-		fmt.Print("Cloudflare API token (hidden): ")
+		token = configValue(infra, "cloudflare:apiToken", "")
+	}
+	if token == "" {
+		fmt.Print("Cloudflare API token (hidden; no credential available to reuse): ")
 		bytes, e := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println()
 		if e != nil {
@@ -211,7 +293,7 @@ func wizard() error {
 	if token == "" {
 		return fmt.Errorf("Cloudflare API token is required")
 	}
-	// The token is inherited by Pulumi, never passed as a CLI argument or saved to a file.
+	// Reuse the token through the environment; save it only as a KMS-encrypted Pulumi secret.
 	if err = os.Setenv("CLOUDFLARE_API_TOKEN", token); err != nil {
 		return err
 	}
@@ -226,6 +308,9 @@ func wizard() error {
 		return fmt.Errorf("token must be able to read the apexfission.com zone")
 	}
 	zoneID := zones[0].ID
+	if err = setSecret(infra, "cloudflare:apiToken", token); err != nil {
+		return err
+	}
 	var records []struct {
 		ID   string `json:"id"`
 		Type string `json:"type"`
@@ -282,7 +367,7 @@ func wizard() error {
 	if err = run(infra, "go", "test", "./..."); err != nil {
 		return err
 	}
-	fmt.Println("5/6 Preview infrastructure (no cloud resources created yet)")
+	fmt.Println("5/6 Preview application infrastructure (state bucket and KMS are already prepared)")
 	if err = run(infra, "pulumi", "preview", "--diff"); err != nil {
 		return err
 	}
@@ -292,7 +377,7 @@ func wizard() error {
 		return err
 	}
 	if confirm != "DEPLOY" {
-		fmt.Println("Stopped after preview. No deployment requested.")
+		fmt.Println("Stopped after preview. Application not deployed; state bucket, KMS key and saved setup are retained.")
 		return nil
 	}
 	if err = run(infra, "pulumi", "up", "--yes"); err != nil {

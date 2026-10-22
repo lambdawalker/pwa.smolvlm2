@@ -6,7 +6,7 @@ if errorlevel 1 (
   exit /b 1
 )
 pushd "%~dp0backend"
-go run ./cmd/deploy
+go run ./cmd/deploy %*
 set "RESULT=%ERRORLEVEL%"
 popd
 exit /b %RESULT%

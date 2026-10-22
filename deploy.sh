@@ -6,4 +6,4 @@ if ! command -v go >/dev/null 2>&1; then
 fi
 REPO_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$REPO_DIR/backend"
-exec go run ./cmd/deploy
+exec go run ./cmd/deploy "$@"
