@@ -104,3 +104,9 @@ test('card preview opens the original source file and releases it on close',asyn
  assert.equal(originalFiles[0],file);assert.equal(e['original-image'].src,'blob:original');assert.equal(e['original-viewer'].open,true);
  e['close-original'].onclick();assert.equal(e['original-viewer'].open,false);assert.deepEqual(revoked,['blob:original']);
 });
+test('document settings opens as a floating panel and closes independently',async()=>{
+ const {e}=await app();e['document-settings-panel'].hidden=true;
+ e['document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,false);
+ e['close-document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);
+ e['document-settings'].onclick();e['document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);
+});
