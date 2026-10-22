@@ -17,3 +17,14 @@ export function friendlyError(message){
  if(/fetch|network|offline|load failed/i.test(message))return 'A model file could not be loaded. Connect to the internet and retry; cached files will be reused.';
  return message || 'Something went wrong. Please try again.';
 }
+
+export function resolvePrompt(style,custom=''){
+ if(style!=='custom'){
+  if(!Object.hasOwn(PROMPTS,style))throw new Error('Choose a description style.');
+  return PROMPTS[style];
+ }
+ const prompt=custom.trim();
+ if(!prompt)throw new Error('Enter a question or instruction for your photo.');
+ if(prompt.length>1000)throw new Error('Keep your prompt under 1,000 characters.');
+ return prompt;
+}

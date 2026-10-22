@@ -1,24 +1,33 @@
 import './style.css';
 import { registerSW } from 'virtual:pwa-register';
-import { PROMPTS, friendlyError } from './core.js';
+import { resolvePrompt, friendlyError } from './core.js';
 import { preparePhoto } from './image.js';
+import { MODELS, DEFAULT_MODEL, getModel } from './models.js';
 const $=id=>document.getElementById(id);
 let photo=null,worker=null,busy=false,supported=false,pickVersion=0,installPrompt,modelReady=false,loadingModel=false;
+let selectedModel=DEFAULT_MODEL,rememberedModel=false;
+try{const saved=localStorage.getItem('little-lens-model');if(Object.hasOwn(MODELS,saved)){selectedModel=saved;rememberedModel=true;}}catch{}
+$('model-select').value=selectedModel;
+function updateModelDetails(){const m=getModel(selectedModel);$('model-details').textContent=`${m.download}. ${m.hint} M means millions of parameters, not megabytes.`;$('active-model').textContent=m.label;}
+updateModelDetails();
 const status=message=>{$('status').textContent=message;};
 function activity(active){$('spinner').hidden=!active;$('activity').setAttribute('aria-busy',String(active));}
 function showSetup(){ $('setup').hidden=false;$('workspace').hidden=true;$('continue').hidden=true;$('load-model').hidden=false; }
 function loadModel(){
  if(busy||!supported)return;
+ try{localStorage.setItem('little-lens-model',selectedModel);}catch{}
  loadingModel=true;setBusy(true);$('progress-area').hidden=false;$('progress').removeAttribute('value');$('progress-label').textContent='Connecting to model storage…';$('load-model').textContent='Loading model…';$('step-model').textContent='Downloading and preparing SmolVLM2…';status('Starting the model. This can take a few minutes on a phone.');
  navigator.storage?.persist?.().catch(()=>{});
- try{startWorker().postMessage({type:'load'});}catch(e){fail(e.message);}
+ try{startWorker().postMessage({type:'load',model:selectedModel});}catch(e){fail(e.message);}
 }
-function setBusy(value){busy=value;activity(value);$('load-model').disabled=value||!supported;$('describe').disabled=value||!photo||!supported;$('pick').disabled=value;$('remove').disabled=value;$('style').disabled=value;$('clear').disabled=value;$('cancel').hidden=!value;$('reload').disabled=value;}
+function setBusy(value){busy=value;$('model-select').disabled=value;$('change-model').disabled=value;$('custom-prompt').disabled=value;activity(value);$('load-model').disabled=value||!supported;$('describe').disabled=value||!photo||!supported;$('pick').disabled=value;$('remove').disabled=value;$('style').disabled=value;$('clear').disabled=value;$('cancel').hidden=!value;$('reload').disabled=value;}
 function stopWorker(){worker?.terminate();worker=null;modelReady=false;}
 function startWorker(){
  if(worker)return worker;
  worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});
+ const currentWorker=worker;
  worker.onmessage=({data})=>{
+  if(worker!==currentWorker)return;
   switch(data.type){
    case 'loading':status('Downloading or restoring the model…');$('progress-area').hidden=false;break;
    case 'progress':{
@@ -37,11 +46,19 @@ function startWorker(){
    case 'error':fail(data.message);break;
   }
  };
- worker.onerror=event=>{event.preventDefault();fail(event.message||'Could not start the AI worker. Reload and try again.');};
+ worker.onerror=event=>{event.preventDefault();if(worker!==currentWorker)return;fail(event.message||'Could not start the AI worker. Reload and try again.');};
  return worker;
 }
 function fail(message){stopWorker();if(loadingModel){loadingModel=false;showSetup();$('load-model').textContent='Retry download';$('step-model').textContent='Model could not load. Retry below.';}setBusy(false);$('progress-area').hidden=true;status(friendlyError(message));$('copy').disabled=!$('result').textContent;}
 $('load-model').onclick=loadModel;
+$('model-select').onchange=()=>{
+ if(busy)return;
+ const next=$('model-select').value;try{getModel(next);}catch{return;}
+ if(next===selectedModel)return;
+ stopWorker();selectedModel=next;updateModelDetails();showSetup();$('load-model').textContent='Download model';$('step-model').textContent='Download and prepare your selected model';$('progress-area').hidden=true;$('result-box').hidden=true;status('Model selected. Tap Download model to continue.');
+};
+$('change-model').onclick=()=>{if(busy)return;showSetup();if(modelReady){$('continue').hidden=false;$('load-model').hidden=true;}status('Choose a model, or continue with the current one.');$('model-select').focus();};
+$('style').onchange=()=>{$('custom-prompt-area').hidden=$('style').value!=='custom';if($('style').value==='custom')$('custom-prompt').focus();};
 $('continue').onclick=()=>{if(!modelReady)return;$('setup').hidden=true;$('workspace').hidden=false;status('Choose a photo to begin.');$('pick').focus();};
 $('pick').onclick=()=>$('photo').click();
 $('photo').onchange=async event=>{
@@ -56,17 +73,18 @@ $('photo').onchange=async event=>{
 $('remove').onclick=()=>{photo=null;$('preview').removeAttribute('src');$('preview').hidden=true;$('empty').hidden=false;$('remove').hidden=true;$('result-box').hidden=true;$('photo-meta').textContent='One moment at a time';$('pick').textContent='＋ Choose a photo';setBusy(false);status('Choose a new photo.');};
 $('describe').onclick=async()=>{
  if(busy||!photo||!supported)return;
+ let prompt;try{prompt=resolvePrompt($('style').value,$('custom-prompt').value);}catch(e){status(e.message);$('custom-prompt').focus();return;}
  setBusy(true);$('result').textContent='';$('result-box').hidden=true;$('timing').textContent='';$('copy').disabled=true;$('progress').removeAttribute('value');
  status('Starting SmolVLM2…');
  // Best-effort persistence; denial never blocks inference.
  navigator.storage?.persist?.().catch(()=>{});
- try{startWorker().postMessage({type:'describe',image:photo.url,prompt:PROMPTS[$('style').value]});}catch(e){fail(e.message);}
+ try{startWorker().postMessage({type:'describe',image:photo.url,model:selectedModel,prompt});}catch(e){fail(e.message);}
 };
 $('cancel').onclick=()=>{stopWorker();if(loadingModel){loadingModel=false;showSetup();$('load-model').textContent='Retry download';$('step-model').textContent='Download cancelled';}setBusy(false);$('progress-area').hidden=true;$('copy').disabled=!$('result').textContent;status('Cancelled. Completed downloads can be reused on retry.');};
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('result').textContent);status('Description copied.');}catch{status('Copy unavailable. Select and copy the description manually.');}};
 $('clear').onclick=async()=>{
  if(busy)return;stopWorker();
- try{await caches.delete('transformers-cache');showSetup();$('load-model').textContent='Download model';$('step-model').textContent='Download and prepare SmolVLM2';status('Downloaded model cache deleted. The app itself remains available offline.');}catch{status('Could not clear model storage. Use browser site settings to clear it.');}
+ try{await caches.delete('transformers-cache');showSetup();$('load-model').textContent='Download model';$('step-model').textContent='Download and prepare SmolVLM2';status('Downloaded models cache deleted. The app itself remains available offline.');}catch{status('Could not clear model storage. Use browser site settings to clear it.');}
 };
 window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;$('install').hidden=false;});
 $('install').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;$('install').hidden=true;}};
@@ -76,6 +94,6 @@ $('reload').onclick=()=>{if(!busy)updateSW(true);};
 (async()=>{
  try{supported=!!(await navigator.gpu?.requestAdapter());}catch{supported=false;}
  $('step-browser').textContent=supported?'✓ Browser compatible':'Browser does not support WebGPU';
- status(supported?'Browser ready. Starting model download…':'WebGPU is unavailable. Try updated Chrome on Android or Safari on iOS 26+ on a compatible device.');setBusy(false);
- if(supported)loadModel();
+ status(supported?'Browser ready. Choose a model and tap Download model.':'WebGPU is unavailable. Try updated Chrome on Android or Safari on iOS 26+ on a compatible device.');setBusy(false);
+ if(supported&&rememberedModel)loadModel();
 })();

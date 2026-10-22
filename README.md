@@ -1,6 +1,6 @@
 # Little Lens · SmolVLM2 PWA
 
-A mobile-first, installable photo describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with `HuggingFaceTB/SmolVLM2-256M-Video-Instruct`. No server inference, uploads, account, analytics, or API key.
+A mobile-first, installable photo describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with SmolVLM2 256M or 500M. No server inference, uploads, account, analytics, or API key.
 
 ## Run
 
@@ -24,9 +24,9 @@ For another static host, `npm run build` uses `/` by default. Set `BASE_PATH=/yo
 
 ## Experience
 
-1. Open the app. Setup checks WebGPU and automatically downloads or restores the model, with a spinner and per-file progress. Reserve roughly 350–650 MB; Wi-Fi recommended.
+1. On first visit, choose SmolVLM2 256M (roughly 350–650 MB) or 500M (roughly 550–900 MB), then tap Download model. These are parameter counts, not file sizes. Later visits automatically load the remembered choice. Wi-Fi recommended.
 2. Once the model is ready, tap **Continue to photos** and choose one photo (gallery picker; no forced camera capture).
-3. Pick a description style and tap **Describe photo**.
+3. Pick a description style, or choose **Custom prompt** and enter a question/instruction (up to 1,000 characters). Tap **Describe photo**.
 4. Descriptions stream into the page. Cancel terminates the worker immediately, releasing its model; completed cached files are reused on retry.
 5. Copy the result, change the photo, or remove it from the page.
 
@@ -53,7 +53,7 @@ On Android, use the install button when offered or the browser menu. On iPhone, 
 - Transformers.js 3.8.1 with `AutoModelForVision2Seq` and `AutoProcessor`.
 - Dedicated module worker; WebGPU fp16 vision/embeddings + q4f16 decoder when available, otherwise fp32 vision/embeddings + q4 decoder.
 - ONNX Runtime WASM/module files copied from the locked dependency at build time, served from the same origin.
-- Model weights/configuration are pinned to revision `067788b187b95ebe7b2e040b3e4299e342e5b8fd` for reproducible downloads.
+- Both model revisions are pinned in `src/models.js` for reproducible downloads.
 
 ## Validation
 
@@ -81,7 +81,7 @@ SmolVLM2 by Hugging Face: https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Vid
 
 ### Guided model setup
 
-On opening the app, a setup screen checks WebGPU and automatically downloads or restores SmolVLM2. An immediate spinner covers worker startup; per-file progress appears as downloads arrive and the spinner remains visible during model preparation. Keep the page open (Wi-Fi recommended). Cancel stops the worker; Retry reuses completed cached files. Once the model is ready, Continue opens the photo workspace. Deleting the model returns to setup.
+On first visit, a setup screen checks WebGPU and lets you select the 256M or 500M model before downloading. The choice is remembered; later visits automatically load it. An immediate spinner covers worker startup; per-file progress appears as downloads arrive and the spinner remains visible during model preparation. Keep the page open (Wi-Fi recommended). Cancel stops the worker; Retry reuses completed cached files. Once the model is ready, Continue opens the photo workspace. Change model returns to setup and keeps your photo. Switching releases the previous worker before loading the new model; completed files for both can remain cached. Delete all downloaded models clears both caches and returns to setup.
 
 ## AWS deployment (Go + Pulumi)
 
