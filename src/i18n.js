@@ -16,3 +16,5 @@ Object.assign(ES,{
 'Previously cached files are reused when you download or verify a model here. Models appear on the other pages only after their complete cache has been verified. Browser storage may be cleared or evicted.':'Se reutilizan los archivos guardados al descargar o verificar modelos. Los modelos aparecen en las otras páginas después de verificar su descarga completa. El navegador puede borrar los archivos guardados.',
 'If processing stalls, copy this report. Photos, filenames, prompts, and generated text are not included.':'Si el procesamiento se detiene, copia este informe. No incluye fotos, nombres de archivos, instrucciones ni texto generado.'
 });
+
+Object.assign(ES,{'Categorization settings':'Configuración de clasificación','Close categorization settings':'Cerrar configuración de clasificación','Simultaneous images':'Imágenes simultáneas','Previous category':'Categoría anterior','Category navigation':'Navegación de categorías'});

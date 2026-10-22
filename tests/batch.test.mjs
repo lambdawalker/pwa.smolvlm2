@@ -22,3 +22,11 @@ test('structured classification validates both fields and caps description',()=>
  for(const value of ['Indoors','{}','{"category":"Other","description":"x"}','{"category":"Indoors"}'])assert.equal(parseResult(value),null);
  assert.equal(parseResult(JSON.stringify({category:'Documents',description:'x'.repeat(300)})).description.length,180);
 });
+test('batch respects concurrency and pauses scheduling after a provider failure',async()=>{
+ const items=Array.from({length:6},()=>({state:'pending'}));let active=0,max=0,calls=0;const releases=[];
+ const run=runBatch(items,async()=>{calls++;active++;max=Math.max(max,active);await new Promise(resolve=>releases.push(resolve));active--;return '{"category":"Indoors","description":"Room"}';},()=>{},()=>false,3);
+ assert.equal(calls,3);releases.splice(0).forEach(resolve=>resolve());await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,6);releases.splice(0).forEach(resolve=>resolve());await run;assert.equal(max,3);assert.equal(items.filter(i=>i.state==='done').length,6);
+ const paused=Array.from({length:5},()=>({state:'pending'}));calls=0;
+ await runBatch(paused,async()=>{calls++;const error=new Error('quota');error.pauseBatch=true;throw error;},()=>{},()=>false,2);
+ assert.equal(calls,2);assert.equal(paused.filter(i=>i.state==='pending').length,3);
+});
