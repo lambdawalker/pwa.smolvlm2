@@ -11,11 +11,12 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 async function app(supported=true,installed=Object.keys(MODELS),cloud=false,cloudClassify=async()=>'Indoors',auto=false){
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const source=readFileSync(new URL('../src/batch.js',import.meta.url),'utf8').replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replaceAll('import.meta.url',"'https://example.test/src/batch.js'");
- const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},removeAttribute(){},setAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
+ const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},addEventListener(name,handler){this.events??={};this.events[name]=handler;},showModal(){this.open=true;},close(){this.open=false;this.events?.close?.();},removeAttribute(){},setAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
+ const originalFiles=[],revoked=[];class PhotoURL extends URL{static createObjectURL(file){originalFiles.push(file);return 'blob:original';}static revokeObjectURL(url){revoked.push(url);}}
  const workers=[];class Worker{constructor(){workers.push(this);this.sent=[];}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
- await tick();if(!auto)elements['auto-categorize'].checked=false;return {e:elements,w:workers};
+ vm.runInNewContext(source,{appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
+ await tick();if(!auto)elements['auto-categorize'].checked=false;return {e:elements,w:workers,originalFiles,revoked};
 }
 test('main page uses 256M, sends images serially and resumes after stop',async()=>{
  const {e,w}=await app();e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});
@@ -94,4 +95,12 @@ test('attention count highlights failures and identifies the scroll target',asyn
  assert.equal(e['attention-count'].disabled,true);assert.equal(e.status.hidden,true);
  e.photos.onchange({target:{files:[{name:'a.jpg'}]}});const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();w[0].onmessage({data:{type:'complete',text:'uncertain'}});await run;
  assert.equal(e['attention-count'].textContent,'1 need attention');assert.equal(e['attention-count'].disabled,false);assert.match(e['attention-count'].className,/has-attention/);assert.ok(e.groups.children.some(group=>group.id==='needs-attention'));
+});
+
+test('card preview opens the original source file and releases it on close',async()=>{
+ const {e,w,originalFiles,revoked}=await app();const file={name:'source.jpg'};
+ e.photos.onchange({target:{files:[file]}});const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();w[0].onmessage({data:{type:'complete',text:'{"category":"Indoors","description":"A room."}'}});await run;
+ const card=e.groups.children[0].children[1].children[0];const image=card.children.find(child=>child.className==='open-original');image.onclick();
+ assert.equal(originalFiles[0],file);assert.equal(e['original-image'].src,'blob:original');assert.equal(e['original-viewer'].open,true);
+ e['close-original'].onclick();assert.equal(e['original-viewer'].open,false);assert.deepEqual(revoked,['blob:original']);
 });

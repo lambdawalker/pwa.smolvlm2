@@ -13,6 +13,13 @@ import { friendlyError, resolvePrompt } from './core.js';
 import { DEFAULT_MODEL, MODELS, getModel } from './models.js';
 import { CATEGORIES, CATEGORY_PROMPT, runBatch } from './batch-core.js';
 const $=id=>document.getElementById(id);
+let originalURL=null;
+function closeOriginal(){if(originalURL){URL.revokeObjectURL(originalURL);originalURL=null;}$('original-image').removeAttribute('src');}
+$('close-original').onclick=()=>$('original-viewer').close();
+$('original-viewer').addEventListener('close',closeOriginal);
+$('original-viewer').onclick=event=>{if(event.target===$('original-viewer'))$('original-viewer').close();};
+function openOriginal(item){closeOriginal();originalURL=URL.createObjectURL(item.file);$('original-image').src=originalURL;$('original-image').alt=item.description||'Original photo';$('original-viewer').showModal();}
+window.addEventListener('pagehide',closeOriginal);
 const downloads=createDownloadView($('file-downloads'));
 let exporting=false,exportURL=null;
 let items=[],worker=null,pending=null,running=false,supported=false,cancelled=false,installPrompt;
@@ -72,7 +79,7 @@ function render(){
    const label=document.createElement('label');label.className='category-title';const select=document.createElement('select');select.disabled=busy;select.setAttribute('aria-label','Image category');
    for(const value of ['',...CATEGORIES]){const option=document.createElement('option');option.value=value;option.textContent=value||'Choose category';select.append(option);}select.value=item.category||'';
    select.onchange=()=>{if(!select.value)return;item.category=select.value;item.state='done';item.error='';render();};label.append(select);card.append(label);
-   if(item.thumbnail){const img=document.createElement('img');img.src=item.thumbnail;img.alt=item.description||'Selected photo';img.loading='lazy';card.append(img);}
+   if(item.thumbnail){const img=document.createElement('img');img.src=item.thumbnail;img.alt=item.description||'Selected photo';img.loading='lazy';img.className='open-original';img.tabIndex=0;img.setAttribute('role','button');img.setAttribute('aria-label','Open original photo');img.onclick=()=>openOriginal(item);img.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openOriginal(item);}};card.append(img);}
    const state=document.createElement('p');state.className='small';state.textContent=item.state==='processing'?'Looking closely…':item.error||(item.state==='pending'?'Waiting':item.category);if(item.state!=='done')card.append(state);
    if(item.description){const description=document.createElement('p');description.className='card-description';description.textContent=item.description;card.append(description);}
    const details=document.createElement('details');details.className='card-details';const detailTitle=document.createElement('summary');detailTitle.textContent='Details';details.append(detailTitle);

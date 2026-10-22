@@ -375,18 +375,22 @@ func wizard() error {
 		return err
 	}
 	fmt.Println("6/6 Deploy — creates/updates billable AWS resources and DNS records")
-	confirm, err := ask("Deploy now? Enter confirms; n cancels", "yes")
+	confirmed, err := confirmDeployment()
 	if err != nil {
 		return err
 	}
-	if !strings.EqualFold(confirm, "yes") && !strings.EqualFold(confirm, "y") && !strings.EqualFold(confirm, "deploy") {
+	if !confirmed {
 		fmt.Println("Stopped after preview. Application not deployed; state bucket, KMS key and saved setup are retained.")
 		return nil
 	}
-	if err = run(infra, "pulumi", "up", "--yes"); err != nil {
+	deploy := command(infra, "pulumi", "up", "--yes", "--non-interactive")
+	deploy.Stdout, deploy.Stderr = os.Stdout, os.Stderr
+	if err = deploy.Run(); err != nil {
 		return fmt.Errorf("deployment incomplete: %w; rerun this wizard with the same stack to resume", err)
 	}
-	if err = run(infra, "pulumi", "stack", "output", "url"); err != nil {
+	result := command(infra, "pulumi", "stack", "output", "url")
+	result.Stdout, result.Stderr = os.Stdout, os.Stderr
+	if err = result.Run(); err != nil {
 		return err
 	}
 	fmt.Printf("Open https://%s in Chrome on your phone. DNS and certificate provisioning may take time.\n", domain)
