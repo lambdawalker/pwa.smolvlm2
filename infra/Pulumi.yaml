@@ -1,0 +1,6 @@
+name: little-lens
+runtime: go
+description: HTTPS PWA on CloudFront and private S3, with a Go Lambda HTTP API
+config:
+  aws:region:
+    default: us-east-1

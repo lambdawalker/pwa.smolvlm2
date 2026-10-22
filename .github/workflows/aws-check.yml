@@ -1,0 +1,33 @@
+name: Validate AWS deployment
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      GOMEMLIMIT: 1200MiB
+      GOGC: '20'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: |
+            backend/go.sum
+            infra/go.sum
+      - run: npm ci
+      - run: npm test
+      - run: go test ./...
+        working-directory: backend
+      - run: npm run build:aws
+      - run: go test ./...
+        working-directory: infra

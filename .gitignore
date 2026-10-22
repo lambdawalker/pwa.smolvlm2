@@ -5,3 +5,7 @@ public/icons/
 playwright-report/
 test-results/
 .model-test-cache/
+
+backend/build/
+infra/Pulumi.*.yaml
+!infra/Pulumi.example.yaml

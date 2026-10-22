@@ -82,3 +82,9 @@ SmolVLM2 by Hugging Face: https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Vid
 ### Guided model setup
 
 On opening the app, a setup screen checks WebGPU and automatically downloads or restores SmolVLM2. An immediate spinner covers worker startup; per-file progress appears as downloads arrive and the spinner remains visible during model preparation. Keep the page open (Wi-Fi recommended). Cancel stops the worker; Retry reuses completed cached files. Once the model is ready, Continue opens the photo workspace. Deleting the model returns to setup.
+
+## AWS deployment (Go + Pulumi)
+
+See [the AWS deployment guide](docs/aws-deployment.md) for Windows-friendly setup, build, preview, deployment, updates, and cleanup. The stack provides CloudFront HTTPS + private S3 for the PWA and an API Gateway + Go Lambda backend at `/api/*`. Build everything with `npm run build:aws`, then deploy from `infra/` with Pulumi. Inference remains on the device.
+
+Deploy to **audit.apexfission.com** using `.\deploy.bat` on Windows or `sh ./deploy.sh` on Linux/macOS. The Go wizard guides AWS/Pulumi authentication, Cloudflare DNS setup, builds, preview, and deployment confirmation. See the deployment guide for prerequisites and the scoped Cloudflare API token.
