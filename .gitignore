@@ -1,0 +1,7 @@
+node_modules/
+dist/
+public/ort/
+public/icons/
+playwright-report/
+test-results/
+.model-test-cache/
