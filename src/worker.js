@@ -1,4 +1,5 @@
 import { AutoProcessor, AutoTokenizer, AutoModelForVision2Seq, Florence2ForConditionalGeneration, Moondream1ForConditionalGeneration, RawImage, TextStreamer, env } from '@huggingface/transformers';
+import { configureModelLoading } from './model-loading.js';
 import { installModelDownloads } from './downloads.js';
 import { recordModel } from './model-storage.js';
 import { getModel } from './models.js';
@@ -22,6 +23,7 @@ self.onmessage=async ({data})=>{
   if(!adapter)throw new Error('No compatible WebGPU adapter. Try an updated Chrome on Android or Safari on iOS 26+.');
   stage('WebGPU adapter ready',{fp16:adapter.features.has('shader-f16'),maxBufferSize:adapter.limits?.maxBufferSize,maxStorageBufferBindingSize:adapter.limits?.maxStorageBufferBindingSize});
   if(!model){
+   configureModelLoading(env,!!data.cachedOnly);
    send('loading');
    const files=new Set();
    const progress_callback=p=>{if(p.status==='done'&&!p.transfer)files.add(p.file);send('progress',{progress:p});};
