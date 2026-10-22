@@ -4,28 +4,28 @@
 <body>
 <header><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">◉</span> little lens<span class="beta">PHOTO AI</span></a><button id="install" class="quiet" hidden>Install app ↗</button></header>
 <main>
-<nav class="page-nav"><a href="./" aria-current="page">Categorize photos</a><a href="./describe.html">Describe a photo</a><a href="./models.html">Download models</a></nav>
-<section class="intro"><p class="eyebrow">YOUR GALLERY. A LITTLE MORE ORDER.</p><h1>A place for<br>every <em>photo.</em></h1><p class="lede">Choose a few photos. Let Little Lens sort them.<br>Indoors, outdoors, documents, and computer screens.</p><p id="privacy-label" class="privacy">Your photos stay on this device.</p></section>
-<section class="batch-controls" aria-label="Choose and categorize photos">
-<p class="eyebrow">PHOTO CATEGORIZATION</p><h2>Choose your photos.</h2>
-<label for="batch-model">Categorization model</label>
+<details class="hamburger"><summary aria-label="Open navigation">☰</summary><nav><a href="#categorize">Categorize</a><a href="./describe.html">Describe</a><a href="#settings">Settings</a></nav></details>
+<section id="settings-page" hidden><h1>Settings</h1><label for="batch-model">Categorization model</label>
 <select id="batch-model" aria-describedby="batch-model-details"></select>
 <p id="no-models" hidden>No downloaded categorization models. <a href="./models.html">Download a model</a> to begin.</p>
-<div id="cloud-notice" hidden><p>Cloud Gemma sends resized photos and your prompt to Google. Google's free tier may use this content to improve its products. Internet and available quota are required.</p><label><input id="cloud-consent" type="checkbox"> I agree to send selected photos and the prompt to Google.</label></div>
+<div id="cloud-notice" hidden><p>Cloud Gemma sends resized photos and your prompt to Google. Google may use this content to improve its products. Internet is required.</p><label><input id="cloud-consent" type="checkbox" checked> I agree to send selected photos and the prompt to Google.</label></div>
 <p id="precision-label" class="small">Precision: waiting for model</p><p id="batch-model-details" class="small"></p>
 <p class="small">Florence-2 uses fixed vision tasks and is available on the description page. Switching models keeps completed categories and uses your choice for remaining photos.</p>
 <p>Photos are processed one at a time. On-device models require a download; cloud models do not.</p>
-<label for="category-prompt">Categorization prompt</label><textarea id="category-prompt" rows="6" maxlength="1000"></textarea><p id="prompt-id" class="small">Prompt ID appears when processing starts.</p><button id="reset-prompt" class="quiet">Reset prompt</button><p class="small">Ask for exactly one of: Indoors, Outdoors, Documents, Computer screens. Other answers need manual review.</p>
+<label for="category-prompt">Categorization prompt</label><textarea id="category-prompt" rows="6" maxlength="1000"></textarea><p id="prompt-id" class="small">Prompt ID appears when processing starts.</p><button id="reset-prompt" class="quiet">Reset prompt</button><p class="small">Return JSON with category and description.</p>
+<h2>Downloads</h2><p><a href="./models.html">Manage on-device models →</a></p></section>
+<section id="categorize-page"><h1>Categorize</h1><p id="privacy-label" class="small"></p>
+<section class="batch-controls" aria-label="Categorize photos">
 <div class="batch-actions"><button id="pick" class="primary">＋ Choose photos</button><button id="start" class="primary" disabled>Categorize photos</button><button id="cancel" class="quiet" hidden>Stop</button><button id="clear" class="quiet" disabled>Clear photos</button></div>
 <input id="photos" type="file" accept="image/*" multiple hidden>
-<p class="small">Keep this page open while processing. Results last for this visit and do not move or change files in your gallery. Review the categories; AI can make mistakes.</p>
+
 <div aria-live="polite" role="status"><span id="spinner" class="spinner" hidden></span> <span id="status">Checking browser compatibility…</span></div>
 <div id="file-downloads" class="file-downloads" aria-label="Model file downloads"></div>
 <div id="download" hidden><progress id="download-progress" max="100" aria-label="Model file download"></progress><p id="download-label" class="small"></p></div>
 <p id="summary" class="small">No photos selected.</p><progress id="batch-progress" value="0" max="1" aria-label="Photos processed" hidden></progress>
 <button id="retry" class="quiet" hidden>Retry failed photos</button>
 </section>
-<div id="groups" class="category-groups"></div>
-<div id="update" class="update" hidden>New version available. <button id="reload" class="quiet">Reload app</button></div>
+<div class="view-switch" aria-label="Photo layout"><button id="grid-view" aria-pressed="true">Grid</button><button id="list-view" aria-pressed="false">List</button></div><div id="groups" class="category-groups"></div>
+</section><div id="update" class="update" hidden>New version available. <button id="reload" class="quiet">Reload app</button></div>
 </main><footer><span>SORT A LITTLE. SEE MORE.</span><a href="https://github.com/lambdawalker/pwa.smolvlm2" target="_blank" rel="noreferrer">Open source ↗</a></footer>
 <script type="module" src="/src/batch.js"></script></body></html>

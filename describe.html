@@ -4,10 +4,10 @@
 <body>
 <header><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">◉</span> little lens<span class="beta">LOCAL AI</span></a><button id="install" class="quiet" hidden>Install app ↗</button></header>
 <main>
-<nav class="page-nav"><a href="./">Categorize photos</a><a href="./describe.html" aria-current="page">Describe a photo</a><a href="./models.html">Download models</a></nav>
-<section class="intro"><p class="eyebrow">A LITTLE MODEL. A NEW PERSPECTIVE.</p><h1>Every photo<br>has a <em>story.</em></h1><p class="lede">Choose a moment from your gallery.<br>Let a little AI put it into words.</p><p class="privacy"><span aria-hidden="true">◈</span> Your photos stay on this device.</p></section>
+<details class="hamburger"><summary aria-label="Open navigation">☰</summary><nav><a href="./">Categorize</a><a href="./describe.html">Describe</a><a href="./#settings">Settings</a></nav></details>
+<section class="intro"><h1>Describe</h1></section>
 <section id="setup" class="setup" aria-labelledby="setup-title">
-<p class="eyebrow">LET’S GET READY</p><h2 id="setup-title">A little setup. Then your photos.</h2>
+<p class="eyebrow">LET’S GET READY</p><h2 id="setup-title">Setup</h2>
 <p id="no-models" hidden>No downloaded models. <a href="./models.html">Download a model</a> to begin.</p><label for="model-select">Choose a downloaded model</label>
 <select id="model-select"></select>
 <p id="model-details" class="small"></p>
@@ -22,10 +22,10 @@
 <button id="cancel" class="quiet" hidden>Cancel</button></div>
 <section id="workspace" hidden class="workspace" aria-label="Photo description">
 <div class="photo-panel"><div class="panel-top"><span>01 / YOUR PHOTO</span><span id="photo-meta">One moment at a time</span></div>
-<div id="empty" class="empty"><div class="photo-art" aria-hidden="true"><span>✦</span><svg viewBox="0 0 180 130"><rect x="16" y="10" width="148" height="110" rx="10"/><circle cx="120" cy="42" r="13"/><path d="M16 99 62 52 104 95 126 74 164 110"/></svg></div><h2>A fresh pair of eyes.</h2><p>Landscapes, everyday objects, little details.<br>What will you discover?</p></div>
+<div id="empty" class="empty"><div class="photo-art" aria-hidden="true"><span>✦</span><svg viewBox="0 0 180 130"><rect x="16" y="10" width="148" height="110" rx="10"/><circle cx="120" cy="42" r="13"/><path d="M16 99 62 52 104 95 126 74 164 110"/></svg></div><h2>Choose a photo</h2><p>Landscapes, everyday objects, little details.<br>What will you discover?</p></div>
 <img id="preview" alt="Selected photo to describe" hidden>
 <p id="image-info" class="small raw-output"></p><div class="photo-actions"><button id="pick" class="primary">＋ Choose a photo</button><button id="remove" class="quiet" hidden>Remove</button><input id="photo" type="file" accept="image/*" hidden></div><p class="small">JPEG, PNG, WebP, or any image your browser can open.</p></div>
-<div class="description-panel"><div class="panel-top"><span>02 / A NEW PERSPECTIVE</span><span class="dot" aria-hidden="true"></span></div><h2>Put it into words.</h2><div id="prompt-controls"><label for="style">Description style</label><select id="style"><option value="brief">Short & simple</option><option value="detail">A closer look</option><option value="alt">Alt text</option><option value="custom">Custom prompt</option></select>
+<div class="description-panel"><div class="panel-top"><span>02 / A NEW PERSPECTIVE</span><span class="dot" aria-hidden="true"></span></div><h2>Description</h2><div id="prompt-controls"><label for="style">Description style</label><select id="style"><option value="brief">Short & simple</option><option value="detail">A closer look</option><option value="alt">Alt text</option><option value="custom">Custom prompt</option></select>
 <div id="custom-prompt-area" hidden><label for="custom-prompt">Your question or instruction</label><textarea id="custom-prompt" rows="4" maxlength="1000" placeholder="What objects are on the table?" aria-describedby="prompt-hint"></textarea><p id="prompt-hint" class="small">Ask one focused question about the photo. Up to 1,000 characters.</p></div>
 </div><div id="florence-controls" hidden><label for="florence-task">Vision task</label><select id="florence-task"><option value="caption">Short caption</option><option value="detail">Detailed caption</option><option value="ocr">Read text (OCR)</option><option value="objects">Detect objects</option></select><p class="small">Florence uses fixed tasks instead of custom questions. Object detection returns labels and pixel coordinates for the resized photo.</p></div>
 <p id="precision-label" class="small">Precision: waiting for model</p><p id="prompt-id" class="small"></p><div class="model-note"><strong>Small model. All yours.</strong><p><span id="active-model">SmolVLM2 · 256M</span><br>Model files are cached when browser storage allows.</p></div>

@@ -13,21 +13,29 @@ import { CATEGORIES, CATEGORY_PROMPT, runBatch } from './batch-core.js';
 const $=id=>document.getElementById(id);
 const downloads=createDownloadView($('file-downloads'));
 let items=[],worker=null,pending=null,running=false,supported=false,cancelled=false,installPrompt;
-let selectedModel=DEFAULT_MODEL;
+const readSetting=(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}};
+const saveSetting=(key,value)=>{try{localStorage.setItem(key,value);}catch{}};
+let selectedModel=CLOUD_MODEL;
 let installed=[],activeItem=null,precision=null,cloudEnabled=false,cloudController=null,batchPause='';
 const isCloud=()=>selectedModel===CLOUD_MODEL;
 const batchModel=key=>key===CLOUD_MODEL?CLOUD_INFO:getModel(key);
 const canRun=()=>isCloud()?cloudEnabled&&$('cloud-consent').checked:supported&&installed.includes(selectedModel);
-$('cloud-consent').onchange=render;
-$('category-prompt').value=CATEGORY_PROMPT;
-$('reset-prompt').onclick=()=>{if(!running)$('category-prompt').value=CATEGORY_PROMPT;};
+$('cloud-consent').checked=readSetting('lens-consent','true')==='true';
+$('cloud-consent').onchange=()=>{saveSetting('lens-consent',String($('cloud-consent').checked));render();};
+function showSection(){const settings=window.location?.hash==='#settings';$('settings-page').hidden=!settings;$('categorize-page').hidden=settings;document.querySelector?.('.hamburger')?.removeAttribute('open');}
+window.addEventListener('hashchange',showSection);showSection();
+function setView(view){$('groups').className='category-groups '+(view==='list'?'list-view':'');$('grid-view').setAttribute('aria-pressed',String(view!=='list'));$('list-view').setAttribute('aria-pressed',String(view==='list'));saveSetting('lens-view',view);}
+$('grid-view').onclick=()=>setView('grid');$('list-view').onclick=()=>setView('list');setView(readSetting('lens-view','grid'));
+$('category-prompt').value=readSetting('lens-category-prompt',CATEGORY_PROMPT);
+$('category-prompt').onchange=()=>saveSetting('lens-category-prompt',$('category-prompt').value);
+$('reset-prompt').onclick=()=>{if(!running){$('category-prompt').value=CATEGORY_PROMPT;saveSetting('lens-category-prompt',CATEGORY_PROMPT);}};
 function modelDetails(){const model=batchModel(selectedModel);$('batch-model-details').textContent=`${model.download}. ${model.hint}`;$('cloud-notice').hidden=!isCloud();$('privacy-label').textContent=isCloud()?'Cloud mode: selected photos are sent to Google.':'Your photos stay on this device.';$('precision-label').textContent=isCloud()?CLOUD_PRECISION:precisionLabel(precision);}
 modelDetails();
 $('batch-model').onchange=()=>{
  const next=$('batch-model').value;
  if(running||(next===CLOUD_MODEL?!cloudEnabled:!installed.includes(next)||!Object.hasOwn(MODELS,next)||getModel(next).family==='florence')){$('batch-model').value=selectedModel;return;}
  if(next===selectedModel)return;
- stopWorker();precision=null;$('precision-label').textContent=precisionLabel(null);selectedModel=next;downloads.reset();$('download').hidden=true;modelDetails();render();status(`${batchModel(selectedModel).label} selected. Completed categories are kept. Tap Categorize photos to continue.`);
+ stopWorker();precision=null;$('precision-label').textContent=precisionLabel(null);selectedModel=next;saveSetting('lens-model',next);downloads.reset();$('download').hidden=true;modelDetails();render();status(`${batchModel(selectedModel).label} selected. Completed categories are kept. Tap Categorize photos to continue.`);
 };
 const monitor=watchOperation(stage=>{logEvent('operation-slow',{stage});status(`Still waiting: ${stage}. You can stop and copy the troubleshooting report below.`);},stage=>{logEvent('operation-timeout',{stage});const p=pending;pending=null;stopWorker();p?.reject(new Error(`No progress for 3 minutes during ${stage}. Retry or copy the troubleshooting report.`));});
 const status=text=>{$('status').textContent=text;};
@@ -41,7 +49,7 @@ function render(){
  $('groups').replaceChildren();
  for(const category of [...CATEGORIES,'Needs attention','Waiting']){
   const members=items.filter(i=>category==='Waiting'?['pending','processing'].includes(i.state):category==='Needs attention'?['error','review'].includes(i.state):i.category===category&&i.state==='done');
-  if(!members.length&&!CATEGORIES.includes(category))continue;
+  if(!members.length)continue;
   const section=document.createElement('section');section.className='category-group';const title=document.createElement('h2');title.textContent=`${category} · ${members.length}`;section.append(title);
   const grid=document.createElement('div');grid.className='photo-grid';section.append(grid);
   if(!members.length){const empty=document.createElement('p');empty.className='small';empty.textContent='Photos in this category will appear here.';grid.append(empty);}
@@ -50,10 +58,13 @@ function render(){
    if(item.thumbnail){const img=document.createElement('img');img.src=item.thumbnail;img.alt=item.file.name;img.loading='lazy';card.append(img);}
    const name=document.createElement('p');name.textContent=item.file.name;card.append(name);
    const state=document.createElement('p');state.className='small';state.textContent=item.state==='processing'?'Looking closely…':item.error||(item.state==='pending'?'Waiting':item.category);card.append(state);
-   if(item.info){const info=document.createElement('p');info.className='small raw-output';info.textContent=imageInfoLabel(item.info);card.append(info);}
-   if(item.promptHash){const info=document.createElement('p');info.className='small';info.textContent=`Prompt ID: ${item.promptHash.slice(0,HASH_LABEL_LENGTH)} · ${batchModel(item.model).label} · ${item.model===CLOUD_MODEL?CLOUD_PRECISION:precisionLabel(item.precision)}`;card.append(info);}
-   if(item.decodedHash){const decoded=document.createElement('p');decoded.className='small';decoded.textContent=`Decoded pixel ID: ${item.decodedHash.slice(0,HASH_LABEL_LENGTH)} · Model image tensor: ${JSON.stringify(item.tensors?.pixel_values||[])}`;card.append(decoded);}
-   if(item.rawOutput!==undefined){const raw=document.createElement('pre');raw.className='raw-output';raw.textContent=item.rawOutput;const heading=document.createElement('p');heading.textContent='Raw model output';card.append(heading,raw);}
+   if(item.description){const description=document.createElement('p');description.className='card-description';description.textContent=item.description;card.append(description);}
+   const details=document.createElement('details');details.className='card-details';const detailTitle=document.createElement('summary');detailTitle.textContent='Details';details.append(detailTitle);
+   if(item.info){const info=document.createElement('p');info.className='small raw-output';info.textContent=imageInfoLabel(item.info);details.append(info);}
+   if(item.promptHash){const info=document.createElement('p');info.className='small';info.textContent=`Prompt ID: ${item.promptHash.slice(0,HASH_LABEL_LENGTH)} · ${batchModel(item.model).label} · ${item.model===CLOUD_MODEL?CLOUD_PRECISION:precisionLabel(item.precision)}`;details.append(info);}
+   if(item.decodedHash){const decoded=document.createElement('p');decoded.className='small';decoded.textContent=`Decoded pixel ID: ${item.decodedHash.slice(0,HASH_LABEL_LENGTH)} · Model image tensor: ${JSON.stringify(item.tensors?.pixel_values||[])}`;details.append(decoded);}
+   if(item.rawOutput!==undefined){const raw=document.createElement('pre');raw.className='raw-output';raw.textContent=item.rawOutput;const heading=document.createElement('p');heading.textContent='Raw model output';details.append(heading,raw);}
+   card.append(details);
    const label=document.createElement('label');label.textContent='Category';const select=document.createElement('select');select.disabled=running;
    for(const value of ['',...CATEGORIES]){const option=document.createElement('option');option.value=value;option.textContent=value||'Choose category';select.append(option);}select.value=item.category||'';
    select.onchange=()=>{if(!select.value)return;item.category=select.value;item.state='done';item.error='';render();};label.append(select);card.append(label);grid.append(card);
@@ -109,7 +120,7 @@ $('start').onclick=async()=>{
    activeItem=item;item.promptHash=promptHash;item.model=selectedModel;item.precision=precision;
    status(`Processing ${items.indexOf(item)+1} of ${items.length}: ${item.file.name}`);
    logEvent('photo-prepare-start',{index:items.indexOf(item),bytes:item.file.size,mime:item.file.type});
-   const photo=await preparePhoto(item.file);
+   const photo=await preparePhoto(item.file,{centerCrop:true});
    item.info=photo.info;logEvent('photo-prepare-complete',{index:items.indexOf(item),...photo.info,width:photo.width,height:photo.height});if(cancelled)throw Error('Stopped');
    item.thumbnail=await thumbnail(photo);if(cancelled)throw Error('Stopped');render();
    if(!isCloud())return request('describe',{image:photo.url,prompt});
@@ -140,4 +151,4 @@ const updateSW=registerSW({onNeedRefresh(){$('update').hidden=false;}});$('reloa
  logEvent('cached-models',{installed});
  installed=installed.filter(key=>getModel(key).family!=='florence');$('batch-model').replaceChildren();for(const key of installed){const option=document.createElement('option');option.value=key;option.textContent=getModel(key).label;$('batch-model').append(option);}
  if(cloudEnabled){const option=document.createElement('option');option.value=CLOUD_MODEL;option.textContent=CLOUD_INFO.label;$('batch-model').append(option);}
- selectedModel=supported&&installed.length?(installed.includes(DEFAULT_MODEL)?DEFAULT_MODEL:installed[0]):cloudEnabled?CLOUD_MODEL:DEFAULT_MODEL;$('batch-model').value=installed.length||cloudEnabled?selectedModel:'';$('no-models').hidden=!!installed.length||cloudEnabled;modelDetails();status(cloudEnabled||supported?'Choose photos to begin. Cloud mode requires consent before uploading.':'WebGPU is unavailable and cloud mode is not configured.');render();})();
+ const saved=readSetting('lens-model',CLOUD_MODEL);selectedModel=saved===CLOUD_MODEL&&cloudEnabled?CLOUD_MODEL:supported&&installed.includes(saved)?saved:cloudEnabled?CLOUD_MODEL:installed[0]||DEFAULT_MODEL;$('batch-model').value=installed.length||cloudEnabled?selectedModel:'';$('no-models').hidden=!!installed.length||cloudEnabled;modelDetails();status(cloudEnabled||supported?'Choose photos to begin.':'WebGPU is unavailable and cloud mode is not configured.');render();})();

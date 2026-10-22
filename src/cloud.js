@@ -1,5 +1,5 @@
 export const CLOUD_MODEL='gemma-cloud';
-export const CLOUD_INFO={label:'Gemma 4 · Cloud (free-tier quota)',download:'No model download',hint:'Requires internet. Prepared photos and your prompt are sent through our server to Google. Free-tier data may be used to improve Google products.'};
+export const CLOUD_INFO={label:'Gemma 4 · Google',download:'No model download',hint:'Requires internet. Prepared photos and your prompt are sent through our server to Google.'};
 export const CLOUD_PRECISION='Precision: provider-managed (not disclosed)';
 export async function cloudAvailable(){
  try{const response=await fetch('/api/cloud',{cache:'no-store',signal:AbortSignal.timeout(5000)});return response.ok&&(await response.json()).enabled===true;}catch{return false;}
