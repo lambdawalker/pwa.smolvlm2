@@ -19,3 +19,5 @@ Object.assign(ES,{
 });
 
 Object.assign(ES,{'Categorization settings':'Configuración de clasificación','Close categorization settings':'Cerrar configuración de clasificación','Simultaneous images':'Imágenes simultáneas','Previous category':'Categoría anterior','Category navigation':'Navegación de categorías'});
+
+Object.assign(ES,{'Choose 1–12 rows.':'Elige entre 1 y 12 filas.','Choose 1–12 columns.':'Elige entre 1 y 12 columnas.'});

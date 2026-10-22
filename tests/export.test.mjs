@@ -10,7 +10,7 @@ test('export paginates categories separately and skips unfinished photos',()=>{
  const plan=exportPlan(items);
  assert.deepEqual(plan.pages.map(p=>[p.category,p.items.length]),[['Indoors',7],['Outdoors',1]]);
  assert.equal(plan.columns,3);assert.equal(plan.rows,4);
- assert.throws(()=>exportPlan(items,{columns:5}),/1–4 columns/);
+ assert.throws(()=>exportPlan(items,{columns:13}),/1–12 columns/);
  assert.throws(()=>exportPlan([]),/at least one/);
  assert.throws(()=>exportPlan([{state:'done',category:'Indoors'}]),/unavailable/);
 });
@@ -59,5 +59,14 @@ test('Spanish documents localize headings and Word restricts layout to table',as
  for(const type of ['docx','pptx']){
   const blob=await createDocument([item('Indoors')],{type,language:'es',rows:2});const zip=await JSZip.loadAsync(await blob.arrayBuffer());const xml=await zip.file(type==='docx'?'word/document.xml':'ppt/slides/slide1.xml').async('string');assert.match(xml,/Interiores/);assert.ok(!xml.includes('A bright room'));
  }
- assert.throws(()=>exportPlan([item('Indoors')],{rows:0}),/1–6 rows/);
+ assert.throws(()=>exportPlan([item('Indoors')],{rows:0}),/1–12 rows/);
+});
+
+test('typed dimensions support 12 by 12 and reject invalid values',async()=>{
+ const plan=exportPlan([item('Indoors')],{rows:'12',columns:'12'});assert.equal(plan.perPage,144);
+ for(const invalid of [0,13,1.5,'',NaN])for(const field of ['rows','columns'])assert.throws(()=>exportPlan([item('Indoors')],{[field]:invalid}),/1–12/);
+ for(const type of ['docx','pptx'])for(const layout of ['table','cards'])for(const showDescription of [false,true]){
+  const blob=await createDocument([item('Indoors')],{type,layout,showDescription,rows:12,columns:12});const zip=await JSZip.loadAsync(await blob.arrayBuffer());
+  const xml=await zip.file(type==='docx'?'word/document.xml':'ppt/slides/slide1.xml').async('string');assert.ok(!/(?:w:w|cx|cy)="-/.test(xml));
+ }
 });

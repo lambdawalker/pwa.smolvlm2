@@ -2,11 +2,11 @@ import { defaults } from './defaults.generated.js';
 import { CATEGORIES } from './batch-core.js';
 export function exportPlan(items,{type=defaults.document.type,rows=defaults.document.rows,columns=defaults.document.columns,layout=defaults.document.layout,showDescription=defaults.document.addDescription,orientation=defaults.document.orientation,language=defaults.interface.language}={}){
  columns=Number(columns);rows=Number(rows);
- if(!Number.isInteger(rows)||rows<1||rows>6)throw Error('Choose 1–6 rows.');
+ if(!Number.isInteger(rows)||rows<1||rows>12)throw Error('Choose 1–12 rows.');
  if(type==='docx')layout='table';
  if(!['docx','pptx'].includes(type)||!['cards','table'].includes(layout))throw Error('Choose a document type, rows, and layout.');
  if(!['portrait','landscape'].includes(orientation))throw Error('Choose portrait or landscape.');
- if(!Number.isInteger(columns)||columns<1||columns>4)throw Error('Choose 1–4 columns.');
+ if(!Number.isInteger(columns)||columns<1||columns>12)throw Error('Choose 1–12 columns.');
  const perPage=rows*columns;
  const pages=[];
  for(const category of CATEGORIES){
