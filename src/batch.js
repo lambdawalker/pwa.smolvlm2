@@ -47,8 +47,24 @@ window.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('document-
 window.addEventListener('click',event=>{if(!$('document-settings-panel').hidden&&!$('document-settings-panel').contains(event.target)&&!$('document-settings').contains(event.target))setDocumentPanel(false);});
 function showSection(){const settings=window.location?.hash==='#settings';if(settings)setDocumentPanel(false);$('section-title').textContent=settings?'Settings':'Categorize';$('settings-page').hidden=!settings;$('categorize-page').hidden=settings;document.querySelector?.('.hamburger')?.removeAttribute('open');}
 window.addEventListener('hashchange',showSection);showSection();
-function setView(view){$('groups').className='category-groups '+(view==='list'?'list-view':'');$('grid-view').setAttribute('aria-pressed',String(view!=='list'));$('list-view').setAttribute('aria-pressed',String(view==='list'));saveSetting('lens-view',view);}
-$('grid-view').onclick=()=>setView('grid');$('list-view').onclick=()=>setView('list');setView(readSetting('lens-view','grid'));
+let currentView='grid',activeCategory=null,categoryPages=[];
+const mobileCategories=()=>window.matchMedia?.('(max-width: 700px)').matches??false;
+function syncCategorySelection(){
+ for(const page of categoryPages){const active=page.category===activeCategory;page.section.className='category-group'+(active?' active-category':'');page.tab.setAttribute('aria-selected',String(active));page.tab.tabIndex=active?0:-1;}
+}
+function selectCategory(category,smooth=true){
+ const index=categoryPages.findIndex(page=>page.category===category);if(index<0)return;
+ activeCategory=category;syncCategorySelection();
+ if(mobileCategories())$('groups').scrollTo?.({left:index*$('groups').clientWidth,behavior:smooth?'smooth':'instant'});
+}
+$('groups').onscroll=()=>{
+ if(!mobileCategories()||!$('groups').clientWidth)return;
+ const index=Math.round($('groups').scrollLeft/$('groups').clientWidth);
+ if(categoryPages[index]){activeCategory=categoryPages[index].category;syncCategorySelection();}
+};
+window.addEventListener('resize',()=>selectCategory(activeCategory,false));
+function setView(view){currentView=view;$('groups').className='category-groups '+(view==='list'?'list-view':'');$('list-view-icon').hidden=view==='list';$('grid-view-icon').hidden=view!=='list';$('view-toggle').setAttribute('aria-label',view==='list'?'Switch to grid view':'Switch to list view');$('view-toggle').title=view==='list'?'Switch to grid view':'Switch to list view';saveSetting('lens-view',view);}
+$('view-toggle').onclick=()=>setView(currentView==='grid'?'list':'grid');setView(readSetting('lens-view','grid'));
 $('category-prompt').value=readSetting('lens-category-prompt',CATEGORY_PROMPT);
 $('category-prompt').onchange=()=>saveSetting('lens-category-prompt',$('category-prompt').value);
 $('reset-prompt').onclick=()=>{if(!running){$('category-prompt').value=CATEGORY_PROMPT;saveSetting('lens-category-prompt',CATEGORY_PROMPT);}};
@@ -62,7 +78,7 @@ $('batch-model').onchange=()=>{
 };
 const monitor=watchOperation(stage=>{logEvent('operation-slow',{stage});status(`Still waiting: ${stage}. You can stop and copy the troubleshooting report below.`);},stage=>{logEvent('operation-timeout',{stage});const p=pending;pending=null;stopWorker();p?.reject(new Error(`No progress for 3 minutes during ${stage}. Retry or copy the troubleshooting report.`));});
 const status=(text,visible=false)=>{$('status').textContent=text;$('status').hidden=!visible;};
-$('attention-count').onclick=()=>document.getElementById('needs-attention')?.scrollIntoView({behavior:'smooth',block:'start'});
+$('attention-count').onclick=()=>{selectCategory('Needs attention');document.getElementById('needs-attention')?.scrollIntoView({behavior:'smooth',block:'start',inline:'nearest'});};
 function render(){
  const busy=running||exporting;
  $('export-document').disabled=exporting||busy||!items.some(item=>item.state==='done');
@@ -75,15 +91,22 @@ function render(){
  $('attention-count').textContent=`${attention} need attention`;$('attention-count').disabled=attention===0;$('attention-count').className='attention-count'+(attention?' has-attention':'');
 
  $('batch-progress').hidden=!items.length;$('batch-progress').max=items.length||1;$('batch-progress').value=finished;
- $('groups').replaceChildren();
+ $('groups').replaceChildren();$('category-tabs').replaceChildren();categoryPages=[];
  for(const category of [...CATEGORIES,'Needs attention','Waiting']){
   const members=items.filter(i=>category==='Waiting'?['pending','processing'].includes(i.state):category==='Needs attention'?['error','review'].includes(i.state):i.category===category&&i.state==='done');
   if(!members.length)continue;
   const section=document.createElement('section');section.className='category-group';if(category==='Needs attention')section.id='needs-attention';const title=document.createElement('h2');title.textContent=`${category} · ${members.length}`;section.append(title);
+  const pageId='category-page-'+categoryPages.length;section.id=category==='Needs attention'?'needs-attention':pageId;section.setAttribute('role','tabpanel');section.setAttribute('aria-label',category);
+  const tab=document.createElement('button');tab.textContent=`${category} · ${members.length}`;tab.setAttribute('role','tab');tab.setAttribute('aria-controls',section.id);tab.onclick=()=>selectCategory(category);
+  tab.onkeydown=event=>{const index=categoryPages.findIndex(page=>page.category===category);let next=index;if(event.key==='ArrowRight')next=(index+1)%categoryPages.length;else if(event.key==='ArrowLeft')next=(index+categoryPages.length-1)%categoryPages.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=categoryPages.length-1;else return;event.preventDefault();selectCategory(categoryPages[next].category);categoryPages[next].tab.focus?.();};
+  $('category-tabs').append(tab);categoryPages.push({category,section,tab});
+  const next=document.createElement('button');next.className='icon-button next-category';next.setAttribute('aria-label','Next category');next.title='Next category';next.textContent='→';next.onclick=()=>{const index=categoryPages.findIndex(page=>page.category===category);selectCategory(categoryPages[(index+1)%categoryPages.length].category);};title.append(next);
+
   const grid=document.createElement('div');grid.className='photo-grid';section.append(grid);
   if(!members.length){const empty=document.createElement('p');empty.className='small';empty.textContent='Photos in this category will appear here.';grid.append(empty);}
   for(const item of members){
    const card=document.createElement('article');card.className='photo-card';
+   const remove=document.createElement('button');remove.className='icon-button remove-photo';remove.disabled=busy;remove.setAttribute('aria-label','Remove image');remove.title='Remove image';remove.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg>';remove.onclick=()=>{if(running||exporting)return;items=items.filter(candidate=>candidate!==item);render();};card.append(remove);
    const label=document.createElement('label');label.className='category-title';const select=document.createElement('select');select.disabled=busy;select.setAttribute('aria-label','Image category');
    for(const value of ['',...CATEGORIES]){const option=document.createElement('option');option.value=value;option.textContent=value||'Choose category';select.append(option);}select.value=item.category||'';
    select.onchange=()=>{if(!select.value)return;item.category=select.value;item.state='done';item.error='';render();};label.append(select);card.append(label);
@@ -97,6 +120,9 @@ function render(){
   }
   $('groups').append(section);
  }
+ if(!categoryPages.some(page=>page.category===activeCategory))activeCategory=categoryPages[0]?.category??null;
+ selectCategory(activeCategory,false);
+ $('category-tabs').hidden=!categoryPages.length;
 }
 function stopWorker(){cloudController?.abort();cloudController=null;monitor.stop();logEvent('worker-stopped');worker?.terminate();worker=null;if(pending){pending.reject(new Error('Stopped'));pending=null;}}
 function request(type,extra={}){

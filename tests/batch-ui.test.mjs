@@ -77,8 +77,8 @@ test('Google is default even with local models, and layouts switch',async()=>{
  const {e}=await app(true,['256m','smolvlm-500m'],true);
  assert.equal(e['batch-model'].value,CLOUD_MODEL);assert.equal(e['cloud-consent'].checked,true);
  assert.equal(e['settings-page'].hidden,true);assert.equal(e['categorize-page'].hidden,false);
- e['list-view'].onclick();assert.match(e.groups.className,/list-view/);
- e['grid-view'].onclick();assert.equal(e.groups.className.includes('list-view'),false);
+ e['view-toggle'].onclick();assert.match(e.groups.className,/list-view/);
+ e['view-toggle'].onclick();assert.equal(e.groups.className.includes('list-view'),false);
 });
 
 test('automatic mode starts on selection and the same button stops processing',async()=>{
@@ -109,4 +109,18 @@ test('document settings opens as a floating panel and closes independently',asyn
  e['document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,false);
  e['close-document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);
  e['document-settings'].onclick();e['document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);
+});
+test('category navigation wraps and removing the final image drops its page',async()=>{
+ const {e,w}=await app();
+ e.photos.onchange({target:{files:[{name:'room.jpg'},{name:'yard.jpg'}]}});const run=e.start.onclick();
+ w[0].onmessage({data:{type:'ready'}});await tick();
+ w[0].onmessage({data:{type:'complete',text:'{"category":"Indoors","description":"A room."}'}});await tick();
+ w[0].onmessage({data:{type:'complete',text:'{"category":"Outdoors","description":"A yard."}'}});await run;
+ assert.equal(e['category-tabs'].children.length,2);
+ let pages=e.groups.children;assert.match(pages[0].className,/active-category/);
+ pages[0].children[0].children[0].onclick();assert.match(pages[1].className,/active-category/);
+ pages[1].children[0].children[0].onclick();assert.match(pages[0].className,/active-category/);
+ e['category-tabs'].children[1].onclick();assert.match(pages[1].className,/active-category/);
+ const remove=pages[1].children[1].children[0].children.find(child=>child.className?.includes('remove-photo'));
+ assert.equal(remove.disabled,false);remove.onclick();assert.equal(e['category-tabs'].children.length,1);assert.match(e.summary.textContent,/1 of 1 processed/);assert.match(e.groups.children[0].className,/active-category/);
 });
