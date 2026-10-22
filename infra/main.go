@@ -24,6 +24,7 @@ import (
 
 func main() { pulumi.Run(deploy) }
 func deploy(ctx *pulumi.Context) error {
+	cfg := config.New(ctx, "")
 	for _, path := range []string{"../dist/index.html", "../backend/build/backend.zip"} {
 		if _, err := os.Stat(path); err != nil {
 			return fmt.Errorf("missing build artifact %s: run npm run build:aws from the repository root: %w", path, err)
@@ -56,7 +57,7 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, Code: pulumi.NewFileArchive("../backend/build/backend.zip"), MemorySize: pulumi.Int(128), Timeout: pulumi.Int(10), LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn([]pulumi.Resource{policy}))
+	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, Code: pulumi.NewFileArchive("../backend/build/backend.zip"), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(29), Environment: &lambda.FunctionEnvironmentArgs{Variables: pulumi.StringMap{"GEMINI_API_KEY": cfg.GetSecret("geminiApiKey"), "SITE_ORIGIN": pulumi.String("https://" + cfg.Get("domain"))}}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn([]pulumi.Resource{policy}))
 	if err != nil {
 		return err
 	}
@@ -85,7 +86,6 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	cfg := config.New(ctx, "")
 	domain := cfg.Get("domain")
 	aliases := pulumi.StringArray{}
 	certificate := &cloudfront.DistributionViewerCertificateArgs{CloudfrontDefaultCertificate: pulumi.Bool(true)}

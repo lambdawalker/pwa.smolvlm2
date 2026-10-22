@@ -1,6 +1,6 @@
 # Little Lens · SmolVLM2 PWA
 
-A mobile-first, installable photo categorizer and describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with a choice of five vision models. No server inference, uploads, account, analytics, or API key.
+A mobile-first, installable photo categorizer and describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with a choice of five vision models. On-device models need no account or API key. Optional hosted Gemma categorization sends prepared photos to Google through the Go backend, only after explicit consent.
 
 ## Run
 
@@ -67,7 +67,7 @@ npm run test:model
 Unit tests cover photo sizing, file validation, and recovery messages. `test:model` exercises the real pinned SmolVLM2 chat template and image processor, asserting the expected image tensor shape. Before claiming support for a device, perform the following manual acceptance checks on **real Android and iOS devices**:
 
 - Pick a real gallery image, finish the model download, and obtain a relevant description.
-- Confirm the network contains model downloads but no image uploads.
+- In on-device mode, confirm the network contains model downloads but no image uploads. In cloud mode, confirm uploads happen only after consent and go through `/api/classify`.
 - Cancel during download and generation, retry, and switch images.
 - Close/reopen offline and repeat inference after caches were populated.
 - Try HEIC, unsupported files, low storage and GPU/memory failures.
@@ -85,7 +85,7 @@ Open **Download models** to download or verify any of the five models. Each file
 
 ## AWS deployment (Go + Pulumi)
 
-See [the AWS deployment guide](docs/aws-deployment.md) for Windows-friendly setup, build, preview, deployment, updates, and cleanup. The stack provides CloudFront HTTPS + private S3 for the PWA and an API Gateway + Go Lambda backend at `/api/*`. Build everything with `npm run build:aws`, then deploy from `infra/` with Pulumi. Inference remains on the device.
+See [the AWS deployment guide](docs/aws-deployment.md) for Windows-friendly setup, build, preview, deployment, updates, and cleanup. The stack provides CloudFront HTTPS + private S3 for the PWA and an API Gateway + Go Lambda backend at `/api/*`. Build everything with `npm run build:aws`, then deploy from `infra/` with Pulumi. On-device inference remains available; optional cloud categorization uses the Go API.
 
 Deploy to **audit.apexfission.com** using `.\deploy.bat` on Windows or `sh ./deploy.sh` on Linux/macOS. The Go wizard guides AWS/Pulumi authentication, Cloudflare DNS setup, builds, preview, and deployment confirmation. See the deployment guide for prerequisites and the scoped Cloudflare API token.
 
@@ -113,7 +113,7 @@ The home page selects multiple images and uses **SmolVLM2 256M** to categorize t
 
 Images are resized and processed sequentially on the device. Stop keeps completed results; continue processes the remaining photos. Failed files can be retried. Ambiguous model responses appear under Needs attention instead of being silently assigned a category. Each card has a category selector for corrections. Computer interfaces/screens take precedence over documents, and documents take precedence over indoor/outdoor scenes when they are the main subject.
 
-Results and selected photos stay in memory for the current visit; refreshing clears them. No files are uploaded, moved, or changed in the phone gallery. Only small processed thumbnails are kept alongside the selected File references. Full-size decoded images are handled one at a time. Classification accuracy must be evaluated on your photos; the small model can misclassify them.
+Results and selected photos stay in memory for the current visit; refreshing clears them. On-device mode uploads no photos. Cloud mode uploads resized JPEGs and the prompt to Google; neither mode moves or changes files in the phone gallery. Only small processed thumbnails are kept alongside the selected File references. Full-size decoded images are handled one at a time. Classification accuracy must be evaluated on your photos; the small model can misclassify them.
 
 The previous single-photo experience, including all five model choices and custom prompts, is available at `describe.html` through **Describe a photo**. Both pages are included in the production build and service-worker precache.
 
@@ -144,3 +144,16 @@ Open **Troubleshooting logs** at the bottom of a page and choose **Copy diagnost
 Precision labels show the actual loaded ONNX dtype for each component, not just whether the GPU supports FP16. Each batch result retains its own model, precision and prompt fingerprint. Full SHA-256 prompt hashes are logged for the exact trimmed prompt sent to the worker; UI labels show the first 12 hexadecimal characters (48 bits, a comparison aid rather than a uniqueness guarantee).
 
 Photo diagnostics include original MIME type, byte size and decoded dimensions; prepared JPEG dimensions, byte size and quality; SHA-256 hashes of the original file, prepared JPEG bytes, resized canvas pixels, and the worker-decoded pixels. Tensor dimensions are also logged. Compare source hashes first, then prepared/pixel hashes to identify preprocessing differences. These hashes are diagnostic identifiers, not anonymization; reports still omit actual images and prompt/output text.
+
+
+## Hosted Gemma categorization
+
+The main page offers **Gemma 4 · Cloud (free-tier quota)** when the backend has a configured Google AI Studio API key. It uses `gemma-4-26b-a4b-it` via Google's Gemini API, requires internet but no WebGPU or local model download, and keeps the same editable category prompt, raw answers, prompt hashes, and manual review flow. Cloud precision is provider-managed and is not reported as FP16 or another guessed format.
+
+Run `deploy.bat` or `deploy.sh`. The wizard reuses `GEMINI_API_KEY` or the encrypted Pulumi `geminiApiKey` secret; otherwise it asks once with hidden input. Get a key at https://aistudio.google.com/apikey. Enter skips cloud setup when no saved key exists. The wizard checks model metadata access without uploading a photo. Model access does not guarantee remaining generation quota.
+
+Before starting cloud processing, users must check the Google-upload consent box. Resized JPEGs (up to 768 pixels per side) and the prompt go through AWS to Google. The application does not persist these uploads or log their content. Google's free-tier data-use terms apply; data may be used to improve Google products. No paid model fallback is implemented, and the application cannot guarantee future provider pricing or quota. API errors pause the batch; users can retry failed photos or continue remaining photos later. Stop cancels the browser request, but a request already accepted by Google may still finish.
+
+The API is currently public, with API Gateway throttling and strict upload limits. The origin check is not authentication: other clients can consume the shared quota. Use this as a limited demo; add user authentication before broader public use. The API key stays server-side and is stored in KMS-encrypted Pulumi config and Lambda environment configuration. Static-only hosting (such as GitHub Pages) does not offer cloud mode.
+
+For local development, set `GEMINI_API_KEY` in the backend process and run `go run ./cmd/api` from `backend/`, alongside `npm run dev`. The Vite API proxy is already configured. To rotate the deployed key, set `GEMINI_API_KEY` locally and rerun the wizard. To disable cloud mode, remove the environment variable, run `pulumi config rm geminiApiKey` in `infra/`, and redeploy (Enter skips setup when prompted).

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -11,8 +12,11 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-// No photo uploads or inference endpoints: inference remains in the browser.
-func handle(_ context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+// Local inference stays in the browser; cloud requests are explicitly selected.
+func handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	if req.RawPath == "/api/cloud" || req.RawPath == "/api/classify" {
+		return cloudRoute(ctx, req), nil
+	}
 	response := events.APIGatewayV2HTTPResponse{StatusCode: 404, Headers: map[string]string{
 		"content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff",
 	}, Body: `{"error":"not found"}`}
@@ -23,7 +27,7 @@ func handle(_ context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGa
 			response.Body = `{"error":"method not allowed"}`
 		} else {
 			response.StatusCode = 200
-			response.Body = `{"status":"ok","service":"little-lens","inference":"on-device"}`
+			response.Body = `{"status":"ok","service":"little-lens","inference":"on-device-and-optional-cloud"}`
 		}
 	}
 	if req.RequestContext.HTTP.Method == "HEAD" {
@@ -41,8 +45,13 @@ func main() {
 	if addr == "" {
 		addr = "127.0.0.1:8080"
 	}
-	server := &http.Server{Addr: addr, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := events.APIGatewayV2HTTPRequest{RawPath: r.URL.Path}
+	server := &http.Server{Addr: addr, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxCloudBody+1))
+		if err != nil || len(body) > maxCloudBody {
+			http.Error(w, "Request too large", 413)
+			return
+		}
+		req := events.APIGatewayV2HTTPRequest{RawPath: r.URL.Path, Body: string(body), Headers: map[string]string{"origin": r.Header.Get("Origin")}}
 		req.RequestContext.HTTP.Method = r.Method
 		response, _ := handle(r.Context(), req)
 		for key, value := range response.Headers {

@@ -13,7 +13,7 @@ export async function runBatch(items,classify,changed,cancelled){
    const answer=await classify(item);
    if(cancelled()){item.state='pending';break;}
    item.rawOutput=String(answer);item.category=parseCategory(answer);item.state=item.category?'done':'review';item.error=item.category?'':'The model did not return a clear category. Choose one below.';
-  }catch(error){if(cancelled()){item.state='pending';break;}item.state='error';item.error=error.message;}
+  }catch(error){if(cancelled()){item.state='pending';break;}item.state='error';item.error=error.message;if(error.pauseBatch){changed();break;}}
   changed();
  }
  changed();

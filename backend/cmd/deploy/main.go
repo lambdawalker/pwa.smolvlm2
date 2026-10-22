@@ -132,7 +132,7 @@ func wizard() error {
 		return fmt.Errorf("start with deploy.bat or deploy.sh from the repository")
 	}
 	fmt.Println("Little Lens — AWS + Cloudflare deployment wizard")
-	fmt.Println("Target: audit.apexfission.com. Model inference stays on the device.")
+	fmt.Println("Target: audit.apexfission.com. On-device AI plus optional hosted Gemma.")
 	fmt.Println("1/6 Check tools and accounts")
 	for _, name := range []string{"node", "npm", "go", "aws", "pulumi"} {
 		if _, err = exec.LookPath(name); err != nil {
@@ -274,6 +274,9 @@ func wizard() error {
 		if err = run(infra, "pulumi", "config", "refresh", "--force", "--non-interactive"); err != nil {
 			return err
 		}
+	}
+	if err = setupGemma(infra); err != nil {
+		return err
 	}
 	fmt.Println("3/6 Check Cloudflare DNS access")
 	fmt.Println("Use an API token scoped to apexfission.com with Zone:Read and DNS:Edit. Do not use the Global API Key.")

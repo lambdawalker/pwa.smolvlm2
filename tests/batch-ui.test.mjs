@@ -4,15 +4,16 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { CATEGORIES,CATEGORY_PROMPT,runBatch } from '../src/batch-core.js';
 import { resolvePrompt } from '../src/core.js';
+import { CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION } from '../src/cloud.js';
 import { MODELS,getModel } from '../src/models.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function app(supported=true,installed=Object.keys(MODELS)){
+async function app(supported=true,installed=Object.keys(MODELS),cloud=false,cloudClassify=async()=>'Indoors'){
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const source=readFileSync(new URL('../src/batch.js',import.meta.url),'utf8').replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replaceAll('import.meta.url',"'https://example.test/src/batch.js'");
  const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},removeAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const workers=[];class Worker{constructor(){workers.push(this);this.sent=[];}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
+ vm.runInNewContext(source,{CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
  await tick();return {e:elements,w:workers};
 }
 test('main page uses 256M, sends images serially and resumes after stop',async()=>{
@@ -51,4 +52,21 @@ test('custom categorization prompt is validated and passed with the image',async
  const {e,w}=await app();e.photos.onchange({target:{files:[{name:'a.jpg'}]}});e['category-prompt'].value=' ';await e.start.onclick();assert.equal(w.length,0);
  e['category-prompt'].value='  Pick Indoors or Outdoors.  ';const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();assert.equal(w[0].sent[1].prompt,'Pick Indoors or Outdoors.');assert.equal(w[0].sent[1].cachedOnly,true);w[0].onmessage({data:{type:'complete',text:'An uncertain answer'}});await run;
  const cards=e.groups.children.flatMap(s=>s.children[1].children);assert.ok(cards.some(card=>card.children?.some(child=>child.textContent==='An uncertain answer')));
+});
+
+test('cloud works without WebGPU or downloads, requires consent and preserves raw answers',async()=>{
+ let calls=0;const {e,w}=await app(false,[],true,async(image,prompt,signal)=>{calls++;assert.equal(image,'data:photo');assert.equal(prompt,CATEGORY_PROMPT);assert.equal(signal.aborted,false);return 'Documents';});
+ assert.equal(e['batch-model'].value,CLOUD_MODEL);e.photos.onchange({target:{files:[{name:'a.jpg'}]}});
+ await e.start.onclick();assert.equal(calls,0);assert.equal(e.start.disabled,true);
+ e['cloud-consent'].checked=true;e['cloud-consent'].onchange();assert.equal(e.start.disabled,false);
+ await e.start.onclick();assert.equal(calls,1);assert.equal(w.length,0);assert.match(e.summary.textContent,/1 of 1 processed · 1 categorized/);
+});
+test('cloud quota failure pauses batch and keeps remaining photos pending',async()=>{
+ let calls=0;const {e}=await app(false,[],true,async()=>{calls++;const error=new Error('Free quota reached');error.status=429;throw error;});
+ e['cloud-consent'].checked=true;e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});await e.start.onclick();
+ assert.equal(calls,1);assert.match(e.status.textContent,/quota/);assert.match(e.summary.textContent,/1 of 2 processed/);assert.equal(e.retry.hidden,false);
+});
+test('stopping cloud aborts request and leaves photo pending',async()=>{
+ let aborted=false;const {e}=await app(false,[],true,async(image,prompt,signal)=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>{aborted=true;reject(new Error('aborted'));})));
+ e['cloud-consent'].checked=true;e.photos.onchange({target:{files:[{name:'a.jpg'}]}});const run=e.start.onclick();await tick();e.cancel.onclick();await run;assert.equal(aborted,true);assert.match(e.summary.textContent,/0 of 1 processed/);
 });

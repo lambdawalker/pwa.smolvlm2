@@ -4,8 +4,8 @@
 
 - CloudFront serves `https://audit.apexfission.com` with an ACM certificate issued in `us-east-1`. Cloudflare hosts DNS-only CNAME records for the site and certificate validation. HTTP requests for the app redirect to HTTPS. Without a configured custom domain, the stack also supports the included `*.cloudfront.net` certificate.
 - Private S3 stores the Vite build, including WASM runtime files. Only this CloudFront distribution can read them through origin access control.
-- `/api/*` goes to API Gateway HTTP API and an ARM64 Go Lambda. `GET /api/health` returns JSON. This is a public health endpoint; authentication is not implemented. Add authorization before adding private APIs.
-- SmolVLM2 still downloads directly from Hugging Face and runs on the phone. Photos are never sent to AWS. Moving hosts means the browser has a new origin/cache and will download the model again.
+- `/api/*` goes to API Gateway HTTP API and an ARM64 Go Lambda. `GET /api/health` returns JSON. `GET /api/cloud` reports whether cloud categorization is configured; `POST /api/classify` forwards a validated resized JPEG and prompt to hosted Gemma. These endpoints are public and throttled, not authenticated.
+- SmolVLM2 still downloads directly from Hugging Face and runs on the phone. In on-device mode, photos are never sent to AWS. Optional cloud mode sends prepared photos through AWS to Google after user consent. Moving hosts means the browser has a new origin/cache and will download the model again.
 - CloudWatch retains Lambda logs for 14 days. API traffic is throttled to 10 requests/second with a burst of 20. These limits are not a spending cap.
 
 No Docker, VPC, NAT gateway, always-on compute, database, GPU instance is required. AWS usage charges apply for storage, delivery, requests, Lambda, and logs. The model download itself is not served by AWS.
@@ -154,3 +154,12 @@ Provide the same AWS profile with KMS decrypt access. Cloudflare credentials are
 - https://www.pulumi.com/registry/packages/aws/api-docs/cloudfront/originaccesscontrol/
 - https://www.pulumi.com/registry/packages/aws/api-docs/apigatewayv2/integration/
 - https://docs.aws.amazon.com/lambda/latest/dg/golang-package.html
+
+
+## Optional hosted Gemma
+
+The wizard checks `GEMINI_API_KEY`, then the KMS-encrypted Pulumi `geminiApiKey` setting. If neither exists, it asks for hidden input; Enter skips cloud setup. Create a key at https://aistudio.google.com/apikey. It validates access to `gemma-4-26b-a4b-it` with a metadata request before saving the secret. This does not verify remaining generation quota. Subsequent deployments reuse the key. To rotate it, set `GEMINI_API_KEY` locally before rerunning the wizard.
+
+The frontend never receives the key. Pulumi passes it as a secret to the Lambda environment. Cloud mode has no model download and works without WebGPU. The user must consent before resized JPEGs and the editable prompt are sent to Google. Google's free-tier data may be used to improve its products. The app has no paid-model fallback; quota errors pause processing. AWS infrastructure charges still apply.
+
+The API validates JPEG dimensions, request size, prompt length and consent; provider error bodies are never exposed or logged. A same-origin browser check is not authentication. Anyone able to call the public endpoint can consume its shared quota; add user authorization before wider deployment. Uploads are not stored by this application. See the README for local development, key rotation and disabling cloud mode.

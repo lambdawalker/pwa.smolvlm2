@@ -41,12 +41,19 @@ func (m *infrastructureMocks) NewResource(args pulumi.MockResourceArgs) (string,
 func TestCustomDomainInfrastructure(t *testing.T) {
 	m := &infrastructureMocks{resources: map[string]resource.PropertyMap{}}
 	err := pulumi.RunErr(deploy, pulumi.WithMocks("little-lens", "test", m), func(info *pulumi.RunInfo) {
-		info.Config = map[string]string{"little-lens:domain": "audit.apexfission.com", "little-lens:cloudflareZoneId": "zone-id"}
+		info.ConfigSecretKeys = []string{"little-lens:geminiApiKey"}
+		info.Config = map[string]string{"little-lens:domain": "audit.apexfission.com", "little-lens:cloudflareZoneId": "zone-id", "little-lens:geminiApiKey": "test-key"}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := m.resources
+	if !r["api"]["environment"].ContainsSecrets() {
+		t.Fatal("API key must remain a Pulumi secret")
+	}
+	if r["api"]["timeout"].NumberValue() != 29 {
+		t.Fatal("cloud timeout must fit API Gateway")
+	}
 	for _, key := range []string{"blockPublicAcls", "blockPublicPolicy", "ignorePublicAcls", "restrictPublicBuckets"} {
 		if !r["web-private"][resource.PropertyKey(key)].BoolValue() {
 			t.Fatalf("public S3 access: %s", key)
