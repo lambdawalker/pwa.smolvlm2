@@ -37,7 +37,7 @@ Both launchers work when invoked from another directory. The wizard itself is wr
 | Pulumi stack | `dev` |
 | Hostname | `audit.apexfission.com` |
 | S3 state bucket | `little-lens-state-<AWS-account-ID>-<region>` |
-| Final deployment confirmation | `no` (type `DEPLOY` to apply) |
+| Final deployment confirmation | `yes` (press Enter to apply; type `n` to cancel) |
 
 Values are stored in ignored `.deploy/settings.json`. Later runs reuse them without questions. Run `.\deploy.bat --configure` or `sh ./deploy.sh --configure` to review settings again. State bucket, region, stack, and account changes require deliberate state migration; the wizard stops rather than creating a second deployment accidentally.
 
@@ -55,7 +55,7 @@ The wizard logs Pulumi into `s3://<bucket>/little-lens?awssdk=v2&region=<region>
 
 The AWS identity also needs S3 bucket creation, public-access-block/versioning/encryption management, and state object list/read/write/delete permissions; KMS describe/create-key/create-alias/enable-key-rotation/encrypt/decrypt permissions are needed for bootstrap and secret access. Routine runs verify access and reapply the bucket protections. An inaccessible bucket is not treated as a missing bucket.
 
-After setup the wizard builds and tests, previews the application, and asks only for the final `DEPLOY` confirmation. It checks that AWS account matches the saved account. On a new checkout, use the same settings/backend/stack: it can restore stack config from Pulumi state. Back up `.deploy/settings.json` privately alongside your knowledge of the bucket/key; it contains no token. A failed or interrupted application deployment can be resumed with the same launcher.
+After setup the wizard builds and tests, previews the application, and asks only for the final deployment confirmation (Enter accepts; `n` cancels). It checks that AWS account matches the saved account. On a new checkout, use the same settings/backend/stack: it can restore stack config from Pulumi state. Back up `.deploy/settings.json` privately alongside your knowledge of the bucket/key; it contains no token. A failed or interrupted application deployment can be resumed with the same launcher.
 
 The Cloudflare record uses **DNS only** (gray cloud): CloudFront handles TLS and caching. Keep the ACM validation CNAME for automatic certificate renewal. Existing DNS records not managed by the selected stack stop the wizard; it never automatically takes over another site. If you intentionally want to adopt an existing CNAME, inspect it and import it into the selected stack before running the wizard:
 

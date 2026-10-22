@@ -372,11 +372,11 @@ func wizard() error {
 		return err
 	}
 	fmt.Println("6/6 Deploy — creates/updates billable AWS resources and DNS records")
-	confirm, err := ask("Type DEPLOY to proceed; anything else exits", "no")
+	confirm, err := ask("Deploy now? Enter confirms; n cancels", "yes")
 	if err != nil {
 		return err
 	}
-	if confirm != "DEPLOY" {
+	if !strings.EqualFold(confirm, "yes") && !strings.EqualFold(confirm, "y") && !strings.EqualFold(confirm, "deploy") {
 		fmt.Println("Stopped after preview. Application not deployed; state bucket, KMS key and saved setup are retained.")
 		return nil
 	}
