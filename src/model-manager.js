@@ -1,3 +1,4 @@
+import './language-ui.js';
 import './handedness.js';
 import './style.css';
 import { logEvent,installDiagnostics } from './diagnostics.js';

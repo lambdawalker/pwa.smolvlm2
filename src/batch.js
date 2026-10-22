@@ -1,3 +1,5 @@
+import './language-ui.js';
+import { getLanguage, languagePrompt, t } from './i18n.js';
 import './handedness.js';
 import { appendPhotoDetails } from './photo-details.js';
 import './style.css';
@@ -32,7 +34,8 @@ const batchModel=key=>key===CLOUD_MODEL?CLOUD_INFO:getModel(key);
 const canRun=()=>isCloud()?cloudEnabled&&$('cloud-consent').checked:supported&&installed.includes(selectedModel);
 $('show-photo-details').checked=readSetting('lens-photo-details','false')==='true';
 $('show-photo-details').onchange=()=>{saveSetting('lens-photo-details',String($('show-photo-details').checked));render();};
-$('export-type').onchange=()=>{const word=$('export-type').value==='docx';$('export-icon-letter').textContent=word?'W':'P';$('export-document').setAttribute('aria-label',word?'Create Word document':'Create PowerPoint document');$('export-document').title=word?'Create Word document':'Create PowerPoint document';};
+function updateExportType(){const word=$('export-type').value==='docx';$('export-icon-letter').textContent=word?'W':'P';$('export-document').setAttribute('aria-label',word?'Create Word document':'Create PowerPoint document');$('export-document').title=word?'Create Word document':'Create PowerPoint document';$('export-layout-field').hidden=word;if(word)$('export-layout').value='table';}
+$('export-type').onchange=updateExportType;updateExportType();
 $('auto-categorize').checked=readSetting('lens-auto-categorize','true')==='true';
 $('auto-categorize').onchange=()=>{saveSetting('lens-auto-categorize',String($('auto-categorize').checked));render();};
 $('cloud-consent').checked=readSetting('lens-consent','true')==='true';
@@ -83,7 +86,7 @@ function render(){
  const busy=running||exporting;
  $('export-document').disabled=exporting||busy||!items.some(item=>item.state==='done');
  $('cloud-consent').disabled=busy;$('batch-model').disabled=busy||(!installed.length&&!cloudEnabled);$('category-prompt').disabled=busy;$('reset-prompt').disabled=busy;
- $('pick').disabled=busy;$('clear').disabled=busy||!items.length;$('start').disabled=exporting||(!running&&(!canRun()||!items.some(i=>i.state==='pending')));$('brain-icon').hidden=running;$('stop-icon').hidden=!running;$('start').hidden=$('auto-categorize').checked&&!running&&!cancelled&&!batchPause;$('start').setAttribute('aria-label',running?'Stop':'Categorize');$('start').title=running?'Cancel categorization':'Categorize';$('start').className='icon-button '+(running?'cancel-floating':'primary');$('auto-categorize').disabled=busy;
+ $('pick').disabled=exporting;$('upload-icon').hidden=running;$('cancel-brain-icon').hidden=!running;$('pick').className='icon-button '+(running?'cancel-floating':'primary');$('pick').setAttribute('aria-label',t(running?'Cancel categorization':'Add photos'));$('pick').title=t(running?'Cancel categorization':'Add photos');$('clear').disabled=busy||!items.length;$('start').disabled=exporting||(!running&&(!canRun()||!items.some(i=>i.state==='pending')));$('brain-icon').hidden=running;$('stop-icon').hidden=!running;$('start').hidden=running||($('auto-categorize').checked&&!cancelled&&!batchPause);$('start').setAttribute('aria-label',running?'Stop':'Categorize');$('start').title=running?'Cancel categorization':'Categorize';$('start').className='icon-button '+(running?'cancel-floating':'primary');$('auto-categorize').disabled=busy;
  $('cancel').hidden=true;$('spinner').hidden=!busy;$('retry').hidden=busy||!items.some(i=>i.state==='error');$('reload').disabled=busy;
  const finished=items.filter(i=>['done','review','error'].includes(i.state)).length;
  const attention=items.filter(i=>['review','error'].includes(i.state)).length;
@@ -155,12 +158,12 @@ function request(type,extra={}){
 async function thumbnail(photo){
  const img=new Image();img.src=photo.url;await img.decode();const canvas=document.createElement('canvas');const scale=Math.min(1,180/photo.width,180/photo.height);canvas.width=Math.max(1,Math.round(photo.width*scale));canvas.height=Math.max(1,Math.round(photo.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.7);
 }
-$('pick').onclick=()=>$('photos').click();
+$('pick').onclick=()=>{if(running){cancelled=true;stopWorker();status('Stopping…');return;}if(!exporting)$('photos').click();};
 $('photos').onchange=event=>{for(const file of event.target.files||[])items.push({file,state:'pending',category:null});event.target.value='';render();if($('auto-categorize').checked&&canRun())$('start').click();else if(!canRun())status('Check your model and consent in Settings.',true);else status('Ready. Tap Categorize to start.');};
 $('start').onclick=async()=>{
  if(running){cancelled=true;stopWorker();status('Stopping…');return;}
  if(exporting||!canRun())return;
- let prompt;try{prompt=resolvePrompt('custom',$('category-prompt').value);}catch(error){status(error.message,true);return;}
+ let prompt;try{prompt=languagePrompt(resolvePrompt('custom',$('category-prompt').value));}catch(error){status(error.message,true);return;}
  running=true;cancelled=false;batchPause='';downloads.reset();render();status(isCloud()?'Preparing cloud categorization…':`Preparing ${batchModel(selectedModel).label}. Loading saved files into memory…`);
  navigator.storage?.persist?.().catch(()=>{});
  try{
@@ -211,7 +214,7 @@ $('export-document').onclick=async()=>{
  exporting=true;render();$('export-status').textContent='Creating document…';
  try{
   const type=$('export-type').value;
-  const options={type,imageSize:$('export-size').value,columns:$('export-columns').value,layout:$('export-layout').value,showDescription:$('export-description').checked,orientation:$('export-orientation').value};
+  const options={type,rows:$('export-rows').value,columns:$('export-columns').value,layout:$('export-layout').value,showDescription:$('export-description').checked,orientation:$('export-orientation').value,language:getLanguage()};
   const {createDocument}=await import('./export-document.js');
   const blob=await createDocument(items,options);
   if(exportURL)URL.revokeObjectURL(exportURL);

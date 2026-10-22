@@ -1,3 +1,4 @@
+import { getLanguage, languagePrompt, t } from '../src/i18n.js';
 import test from 'node:test';
 import { appendPhotoDetails as renderPhotoDetails } from '../src/photo-details.js';
 import assert from 'node:assert/strict';
@@ -15,12 +16,12 @@ async function app(supported=true,installed=Object.keys(MODELS),cloud=false,clou
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const originalFiles=[],revoked=[];class PhotoURL extends URL{static createObjectURL(file){originalFiles.push(file);return 'blob:original';}static revokeObjectURL(url){revoked.push(url);}}
  const workers=[];class Worker{constructor(){workers.push(this);this.sent=[];}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
+ vm.runInNewContext(source,{getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
  await tick();if(!auto)elements['auto-categorize'].checked=false;return {e:elements,w:workers,originalFiles,revoked};
 }
 test('main page uses 256M, sends images serially and resumes after stop',async()=>{
  const {e,w}=await app();e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});
- const first=e.start.onclick();assert.equal(w[0].sent[0].model,'256m');assert.equal(e.pick.disabled,true);
+ const first=e.start.onclick();assert.equal(w[0].sent[0].model,'256m');assert.equal(e.pick.disabled,false);
  w[0].onmessage({data:{type:'ready'}});await tick();assert.equal(w[0].sent[1].type,'describe');assert.equal(w[0].sent.length,2);
  w[0].onmessage({data:{type:'complete',text:'{"category":"Indoors","description":"A scene."}'}});await tick();assert.equal(w[0].sent.length,3);
  e.cancel.onclick();await first;assert.equal(w[0].stopped,true);assert.match(e.summary.textContent,/1 of 2 processed/);
@@ -85,7 +86,7 @@ test('automatic mode starts on selection and the same button stops processing',a
  const {e,w}=await app(true,['256m'],false,undefined,true);
  assert.equal(e['auto-categorize'].checked,true);
  e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});
- assert.equal(w.length,1);assert.equal(e['stop-icon'].hidden,false);assert.equal(e.start.disabled,false);
+ assert.equal(w.length,1);assert.equal(e['cancel-brain-icon'].hidden,false);assert.equal(e.start.disabled,false);
  assert.equal(e['batch-progress'].max,2);assert.equal(e['batch-progress'].value,0);
  await e.start.onclick();await tick();assert.equal(w[0].stopped,true);assert.equal(e['brain-icon'].hidden,false);
 });
@@ -123,4 +124,10 @@ test('category navigation wraps and removing the final image drops its page',asy
  e['category-tabs'].children[1].onclick();assert.match(pages[1].className,/active-category/);
  const remove=pages[1].children[1].children[0].children.find(child=>child.className?.includes('remove-photo'));
  assert.equal(remove.disabled,false);remove.onclick();assert.equal(e['category-tabs'].children.length,1);assert.match(e.summary.textContent,/1 of 1 processed/);assert.match(e.groups.children[0].className,/active-category/);
+});
+
+test('upload becomes the enabled cancel control while a batch runs',async()=>{
+ const {e,w}=await app();e.photos.onchange({target:{files:[{name:'a.jpg'}]}});const run=e.start.onclick();
+ assert.equal(e.pick.disabled,false);assert.equal(e['upload-icon'].hidden,true);assert.equal(e['cancel-brain-icon'].hidden,false);assert.equal(e.start.hidden,true);
+ e.pick.onclick();await run;assert.equal(w[0].stopped,true);assert.equal(e['upload-icon'].hidden,false);assert.equal(e['cancel-brain-icon'].hidden,true);
 });

@@ -16,7 +16,7 @@ test('export paginates categories separately and skips unfinished photos',()=>{
 });
 test('both document formats and layouts produce zipped Office documents',async()=>{
  for(const type of ['docx','pptx'])for(const layout of ['cards','table']){
-  const blob=await createDocument([item('Indoors'),item('Outdoors')],{type,layout,showCategory:true});
+  const blob=await createDocument([item('Indoors'),item('Outdoors')],{type,layout,showDescription:true});
   const bytes=new Uint8Array(await blob.arrayBuffer());assert.equal(String.fromCharCode(...bytes.slice(0,2)),'PK');assert.ok(bytes.length>1000);
   const zip=await JSZip.loadAsync(bytes);
   if(type==='docx'){
@@ -32,9 +32,9 @@ test('both document formats and layouts produce zipped Office documents',async()
  }
 });
 
-test('image sizes determine pagination and always includes category headings',async()=>{
- for(const [imageSize,rows] of [['small',4],['medium',3],['big',2]])for(const columns of [1,2,3,4]){
-  const plan=exportPlan([item('Indoors')],{imageSize,columns});assert.equal(plan.perPage,rows*columns);assert.equal(plan.orientation,'landscape');assert.equal(plan.showDescription,true);
+test('rows determine pagination and always includes category headings',async()=>{
+ for(const rows of [1,2,3,4,5,6])for(const columns of [1,2,3,4]){
+  const plan=exportPlan([item('Indoors')],{rows,columns});assert.equal(plan.perPage,rows*columns);assert.equal(plan.orientation,'landscape');assert.equal(plan.showDescription,false);
  }
  for(const type of ['docx','pptx']){
   const blob=await createDocument([item('Indoors')],{type,showDescription:false,showCategory:false,columns:4,imageSize:'big'});
@@ -51,4 +51,13 @@ test('portrait orientation is encoded in both document formats',async()=>{
   if(type==='docx')assert.match(xml,/w:orient="portrait"/);
   else {const size=xml.match(/<p:sldSz[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);assert.ok(size);assert.ok(Number(size[2])>Number(size[1]));}
  }
+});
+
+test('Spanish documents localize headings and Word restricts layout to table',async()=>{
+ assert.equal(exportPlan([item('Indoors')],{type:'docx',layout:'cards',rows:2}).layout,'table');
+ assert.equal(exportPlan([item('Indoors')],{type:'pptx',layout:'cards',rows:2}).layout,'cards');
+ for(const type of ['docx','pptx']){
+  const blob=await createDocument([item('Indoors')],{type,language:'es',rows:2});const zip=await JSZip.loadAsync(await blob.arrayBuffer());const xml=await zip.file(type==='docx'?'word/document.xml':'ppt/slides/slide1.xml').async('string');assert.match(xml,/Interiores/);assert.ok(!xml.includes('A bright room'));
+ }
+ assert.throws(()=>exportPlan([item('Indoors')],{rows:0}),/1–6 rows/);
 });

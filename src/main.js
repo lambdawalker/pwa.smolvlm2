@@ -1,3 +1,4 @@
+import './language-ui.js';
 import './handedness.js';
 import './style.css';
 import { sha256, HASH_LABEL_LENGTH, precisionLabel, imageInfoLabel } from './input-info.js';
