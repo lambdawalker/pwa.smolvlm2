@@ -24,6 +24,38 @@ const maxCloudBody = 3 << 20
 var googleClient = &http.Client{Timeout: 25 * time.Second}
 var googleEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + cloudModel + ":generateContent"
 
+// Retry only explicit transient HTTP failures, never quota or content-policy responses.
+// The caller owns the shared deadline and closes the final response body.
+func requestGoogle(ctx context.Context, client *http.Client, endpoint, key string, data []byte, backoff time.Duration) (*http.Response, error) {
+	for attempt := 1; ; attempt++ {
+		request, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("x-goog-api-key", key)
+		response, err := client.Do(request)
+		if err != nil {
+			return nil, err
+		}
+		status := response.StatusCode
+		transient := status == 500 || status == 502 || status == 503 || status == 504
+		if !transient || attempt == 3 {
+			return response, nil
+		}
+		response.Body.Close()
+		entry, _ := json.Marshal(map[string]any{"event": "cloud-provider-retry", "providerStatus": status, "nextAttempt": attempt + 1})
+		log.Print(string(entry))
+		timer := time.NewTimer(backoff * time.Duration(attempt))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
 func apiJSON(code int, value any) events.APIGatewayV2HTTPResponse {
 	body, _ := json.Marshal(value)
 	return events.APIGatewayV2HTTPResponse{StatusCode: code, Headers: map[string]string{"content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff"}, Body: string(body)}
@@ -107,13 +139,10 @@ func cloudRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) events.
 		"generationConfig": map[string]any{"temperature": 0, "maxOutputTokens": 128, "thinkingConfig": map[string]string{"thinkingLevel": "minimal"}},
 	}
 	data, _ := json.Marshal(payload)
-	request, err := http.NewRequestWithContext(ctx, "POST", googleEndpoint, bytes.NewReader(data))
-	if err != nil {
-		return cloudError(500, "Could not prepare cloud request.")
-	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("x-goog-api-key", key)
-	response, err := googleClient.Do(request)
+	// One deadline covers every attempt, backoff and response read.
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	response, err := requestGoogle(ctx, googleClient, googleEndpoint, key, data, 500*time.Millisecond)
 	// Never return/log provider bodies, URLs with secrets, prompts or images.
 	if err != nil {
 		return cloudError(504, "Google did not respond in time. Retry this photo later.")
