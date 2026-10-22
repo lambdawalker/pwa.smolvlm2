@@ -1,3 +1,4 @@
+import { defaults } from './defaults.generated.js';
 import './language-ui.js';
 import { getLanguage, languagePrompt, t } from './i18n.js';
 import './handedness.js';
@@ -27,18 +28,24 @@ let exporting=false,exportURL=null;
 let items=[],worker=null,pending=null,running=false,supported=false,cancelled=false,installPrompt;
 const readSetting=(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}};
 const saveSetting=(key,value)=>{try{localStorage.setItem(key,value);}catch{}};
-let selectedModel=CLOUD_MODEL;
+let selectedModel=defaults.interface.model;
 let installed=[],activeItem=null,precision=null,cloudEnabled=false,cloudControllers=new Set(),batchPause='';
 const isCloud=()=>selectedModel===CLOUD_MODEL;
 const batchModel=key=>key===CLOUD_MODEL?CLOUD_INFO:getModel(key);
 const canRun=()=>isCloud()?cloudEnabled&&$('cloud-consent').checked:supported&&installed.includes(selectedModel);
-$('show-photo-details').checked=readSetting('lens-photo-details','false')==='true';
+$('show-photo-details').checked=readSetting('lens-photo-details',String(defaults.interface.showImageDetails))==='true';
 $('show-photo-details').onchange=()=>{saveSetting('lens-photo-details',String($('show-photo-details').checked));render();};
+$('export-type').value=defaults.document.type;
+$('export-orientation').value=defaults.document.orientation;
+$('export-rows').value=String(defaults.document.rows);
+$('export-columns').value=String(defaults.document.columns);
+$('export-layout').value=defaults.document.layout;
+$('export-description').checked=defaults.document.addDescription;
 function updateExportType(){const word=$('export-type').value==='docx';$('export-icon-letter').textContent=word?'W':'P';$('export-document').setAttribute('aria-label',word?'Create Word document':'Create PowerPoint document');$('export-document').title=word?'Create Word document':'Create PowerPoint document';$('export-layout-field').hidden=false;const previous=$('export-layout').value;$('export-layout').replaceChildren();for(const value of (word?['table']:['table','cards'])){const option=document.createElement('option');option.value=value;option.textContent=value==='cards'?'Cards':'Table';$('export-layout').append(option);}$('export-layout').value=word?'table':previous||'table';}
 $('export-type').onchange=updateExportType;updateExportType();
-$('auto-categorize').checked=readSetting('lens-auto-categorize','true')==='true';
+$('auto-categorize').checked=readSetting('lens-auto-categorize',String(defaults.interface.autoCategorize))==='true';
 $('auto-categorize').onchange=()=>{saveSetting('lens-auto-categorize',String($('auto-categorize').checked));render();};
-$('cloud-consent').checked=readSetting('lens-consent','true')==='true';
+$('cloud-consent').checked=readSetting('lens-consent',String(defaults.interface.cloudConsent))==='true';
 $('cloud-consent').onchange=()=>{saveSetting('lens-consent',String($('cloud-consent').checked));render();};
 function setDocumentPanel(open){
  $('document-settings-panel').hidden=!open;$('document-settings').setAttribute('aria-expanded',String(open));
@@ -67,7 +74,7 @@ $('groups').onscroll=()=>{
 };
 window.addEventListener('resize',()=>selectCategory(activeCategory,false));
 function hideIcon(id,hidden){const icon=$(id);icon.hidden=hidden;if(hidden)icon.setAttribute('hidden','');else icon.removeAttribute('hidden');}
-$('image-concurrency').value=readSetting('audit-concurrency','2');
+$('image-concurrency').value=readSetting('audit-concurrency',String(defaults.interface.simultaneousImages));
 $('image-concurrency').onchange=()=>saveSetting('audit-concurrency',$('image-concurrency').value);
 function moveCategory(direction,from=activeCategory){const index=categoryPages.findIndex(page=>page.category===from);if(categoryPages.length)selectCategory(categoryPages[(index+direction+categoryPages.length)%categoryPages.length].category);}
 $('previous-category').onclick=()=>moveCategory(-1);$('next-category').onclick=()=>moveCategory(1);
@@ -76,7 +83,7 @@ $('categorize-page').addEventListener('touchstart',event=>{if(!mobileCategories(
 $('categorize-page').addEventListener('touchend',event=>{if(!swipe)return;const start=swipe;swipe=null;const touch=event.changedTouches[0];if(!touch)return;const dx=touch.clientX-start.x,dy=touch.clientY-start.y;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.3)moveCategory(dx<0?1:-1,start.category);},{passive:true});
 $('categorize-page').addEventListener('touchcancel',()=>{swipe=null;},{passive:true});
 function setView(view){currentView=view;$('groups').className='category-groups '+(view==='list'?'list-view':'');hideIcon('list-view-icon',view==='list');hideIcon('grid-view-icon',view!=='list');$('view-toggle').setAttribute('aria-label',view==='list'?'Switch to grid view':'Switch to list view');$('view-toggle').title=view==='list'?'Switch to grid view':'Switch to list view';saveSetting('lens-view',view);}
-$('view-toggle').onclick=()=>setView(currentView==='grid'?'list':'grid');setView(readSetting('lens-view','grid'));
+$('view-toggle').onclick=()=>setView(currentView==='grid'?'list':'grid');setView(readSetting('lens-view',defaults.interface.view));
 $('category-prompt').value=readSetting('lens-category-prompt',CATEGORY_PROMPT);
 $('category-prompt').onchange=()=>saveSetting('lens-category-prompt',$('category-prompt').value);
 $('reset-prompt').onclick=()=>{if(!running){$('category-prompt').value=CATEGORY_PROMPT;saveSetting('lens-category-prompt',CATEGORY_PROMPT);}};
@@ -216,7 +223,7 @@ const updateSW=registerSW({onNeedRefresh(){$('update').hidden=false;}});$('reloa
  logEvent('cached-models',{installed});
  installed=installed.filter(key=>getModel(key).family!=='florence');$('batch-model').replaceChildren();for(const key of installed){const option=document.createElement('option');option.value=key;option.textContent=getModel(key).label;$('batch-model').append(option);}
  if(cloudEnabled){const option=document.createElement('option');option.value=CLOUD_MODEL;option.textContent=CLOUD_INFO.label;$('batch-model').append(option);}
- const saved=readSetting('lens-model',CLOUD_MODEL);selectedModel=saved===CLOUD_MODEL&&cloudEnabled?CLOUD_MODEL:supported&&installed.includes(saved)?saved:cloudEnabled?CLOUD_MODEL:installed[0]||DEFAULT_MODEL;$('batch-model').value=installed.length||cloudEnabled?selectedModel:'';$('no-models').hidden=!!installed.length||cloudEnabled;modelDetails();status(cloudEnabled||supported?'Choose photos to begin.':'WebGPU is unavailable and cloud mode is not configured.');render();})();
+ const saved=readSetting('lens-model',defaults.interface.model);selectedModel=saved===CLOUD_MODEL&&cloudEnabled?CLOUD_MODEL:supported&&installed.includes(saved)?saved:cloudEnabled?CLOUD_MODEL:installed[0]||DEFAULT_MODEL;$('batch-model').value=installed.length||cloudEnabled?selectedModel:'';$('no-models').hidden=!!installed.length||cloudEnabled;modelDetails();status(cloudEnabled||supported?'Choose photos to begin.':'WebGPU is unavailable and cloud mode is not configured.');render();})();
 
 $('export-document').onclick=async()=>{
  if(exporting||running)return;

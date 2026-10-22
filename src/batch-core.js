@@ -1,5 +1,6 @@
+import { defaults } from './defaults.generated.js';
 export const CATEGORIES=['Indoors','Outdoors','Documents','Computer screens'];
-export const CATEGORY_PROMPT='Classify this image into exactly one category: Indoors, Outdoors, Documents, Computer screens. If the main subject is a computer monitor or a screenshot of a computer interface, choose Computer screens. If the main subject is a page, receipt, form, or printed document, choose Documents. Otherwise choose Indoors for an interior scene or Outdoors for an exterior scene. Return only JSON: {"category":"one of these categories","description":"a short description, at most 180 characters"}.';
+export const CATEGORY_PROMPT=defaults.interface.prompt;
 export function parseCategory(text){
  const normalized=String(text).trim().replace(/^["'`\s]+|["'`.\s]+$/g,'').toLowerCase();
  return CATEGORIES.find(category=>category.toLowerCase()===normalized)??null;

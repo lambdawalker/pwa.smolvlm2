@@ -163,3 +163,9 @@ For local development, set `GEMINI_API_KEY` in the backend process and run `go r
 Run `local.bat` on Windows or `./local.sh` on macOS/Linux. Install Node (compatible with Vite), npm, and Go 1.25+ first. The launcher asks for a hidden Google API key, or reuses `GEMINI_API_KEY` if set. Enter without a key enables only on-device models. The key is passed to the local Go API, never written to disk or sent to Vite.
 
 The launcher runs `npm ci`, builds the API, and starts both servers. Open **http://localhost:5173**. Vite proxies `/api` to the Go backend at `127.0.0.1:8080`. Both ports must be free. Press Ctrl+C to stop. No AWS deployment or credentials are required; Google classification still requires internet and sends selected images to Google. These launchers bind to loopback for desktop testing, not phone access over LAN.
+
+### Categorization defaults
+
+Edit `config/categorization-defaults.yaml` to set interface and document defaults. The default document uses portrait orientation with **4 rows × 3 columns** (12 images per page). The YAML controls the model, prompt, language, view, automatic start, cloud concurrency, consent, handedness, diagnostic visibility, document type, orientation, rows, columns, layout, and description toggle. Saved browser preferences override the corresponding interface defaults. Reset Prompt restores the YAML prompt.
+
+`npm run defaults` validates the YAML and refreshes `src/defaults.generated.js`; never edit the generated file. This also runs automatically with `npm test`, `npm run dev`, production builds, and the local launcher. Rebuild and deploy to apply YAML changes to the hosted app.

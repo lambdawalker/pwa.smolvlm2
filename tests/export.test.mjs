@@ -8,8 +8,8 @@ const item=category=>({state:'done',category,description:'A bright room with win
 test('export paginates categories separately and skips unfinished photos',()=>{
  const items=[...Array.from({length:7},()=>item('Indoors')),item('Outdoors'),{state:'pending',category:'Documents'}];
  const plan=exportPlan(items);
- assert.deepEqual(plan.pages.map(p=>[p.category,p.items.length]),[['Indoors',6],['Indoors',1],['Outdoors',1]]);
- assert.equal(plan.columns,2);assert.equal(plan.rows,3);
+ assert.deepEqual(plan.pages.map(p=>[p.category,p.items.length]),[['Indoors',7],['Outdoors',1]]);
+ assert.equal(plan.columns,3);assert.equal(plan.rows,4);
  assert.throws(()=>exportPlan(items,{columns:5}),/1–4 columns/);
  assert.throws(()=>exportPlan([]),/at least one/);
  assert.throws(()=>exportPlan([{state:'done',category:'Indoors'}]),/unavailable/);
@@ -34,7 +34,7 @@ test('both document formats and layouts produce zipped Office documents',async()
 
 test('rows determine pagination and always includes category headings',async()=>{
  for(const rows of [1,2,3,4,5,6])for(const columns of [1,2,3,4]){
-  const plan=exportPlan([item('Indoors')],{rows,columns});assert.equal(plan.perPage,rows*columns);assert.equal(plan.orientation,'landscape');assert.equal(plan.showDescription,false);
+  const plan=exportPlan([item('Indoors')],{rows,columns});assert.equal(plan.perPage,rows*columns);assert.equal(plan.orientation,'portrait');assert.equal(plan.showDescription,false);
  }
  for(const type of ['docx','pptx']){
   const blob=await createDocument([item('Indoors')],{type,showDescription:false,showCategory:false,columns:4,imageSize:'big'});

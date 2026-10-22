@@ -1,3 +1,4 @@
+import './defaults.mjs';
 import { mkdir, readdir, copyFile, writeFile } from 'node:fs/promises';
 import { deflateSync } from 'node:zlib';
 // Ship ONNX Runtime's matching binaries locally; no CDN dependency when offline.

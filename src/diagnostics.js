@@ -1,3 +1,4 @@
+import { defaults } from './defaults.generated.js';
 const entries=[];
 const clean=value=>String(value).replace(/data:[^\s"']+/g,'[image data omitted]');
 export function logEvent(event,details={}){
@@ -15,7 +16,7 @@ export function installDiagnostics(){
  const report=()=>entries.join('\n');panel.ontoggle=()=>{output.value=report();};
  copy.onclick=async()=>{output.value=report();try{await navigator.clipboard.writeText(output.value);copy.textContent='Report copied';}catch{output.focus();output.select();copy.textContent='Select and copy the report below';}};
  panel.append(title,help,copy,output);
- let enabled=false;try{enabled=localStorage.getItem('lens-diagnostics')==='true';}catch{}
+ let enabled=defaults.interface.showTroubleshooting;try{enabled=(localStorage.getItem('lens-diagnostics')??String(defaults.interface.showTroubleshooting))==='true';}catch{}
  const toggle=document.getElementById('show-diagnostics');
  const slot=document.getElementById('diagnostics-slot');
  panel.hidden=!enabled;

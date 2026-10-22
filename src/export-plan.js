@@ -1,5 +1,6 @@
+import { defaults } from './defaults.generated.js';
 import { CATEGORIES } from './batch-core.js';
-export function exportPlan(items,{type='docx',rows=3,columns=2,layout='table',showDescription=false,orientation='landscape',language='en'}={}){
+export function exportPlan(items,{type=defaults.document.type,rows=defaults.document.rows,columns=defaults.document.columns,layout=defaults.document.layout,showDescription=defaults.document.addDescription,orientation=defaults.document.orientation,language=defaults.interface.language}={}){
  columns=Number(columns);rows=Number(rows);
  if(!Number.isInteger(rows)||rows<1||rows>6)throw Error('Choose 1–6 rows.');
  if(type==='docx')layout='table';
