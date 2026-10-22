@@ -12,7 +12,9 @@
     "build:aws": "node scripts/build-aws.mjs"
   },
   "dependencies": {
-    "@huggingface/transformers": "3.8.1"
+    "@huggingface/transformers": "3.8.1",
+    "docx": "9.13.0",
+    "pptxgenjs": "4.0.1"
   },
   "devDependencies": {
     "vite": "7.1.12",

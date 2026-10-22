@@ -25,6 +25,12 @@
 <p id="summary" class="small">No photos selected.</p><progress id="batch-progress" value="0" max="1" aria-label="Photos processed" hidden></progress>
 <button id="retry" class="quiet" hidden>Retry failed photos</button>
 </section>
+<details class="export-panel"><summary>Export</summary><div class="export-controls">
+<label>Document<select id="export-type"><option value="docx">Word (.docx)</option><option value="pptx">PowerPoint (.pptx)</option></select></label>
+<label>Images per page<input id="export-count" type="number" min="1" max="12" value="6"></label>
+<label>Columns<select id="export-columns"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
+<label>Layout<select id="export-layout"><option value="cards">Cards</option><option value="table">Table</option></select></label></div>
+<p class="small">Completed categories only. Up to four rows per page.</p><button id="export-document" class="primary" disabled>Create document</button><p id="export-status" class="small" role="status" aria-live="polite"></p><a id="export-save" hidden>Download document</a></details>
 <div class="view-switch" aria-label="Photo layout"><button id="grid-view" aria-pressed="true">Grid</button><button id="list-view" aria-pressed="false">List</button></div><div id="groups" class="category-groups"></div>
 </section><div id="update" class="update" hidden>New version available. <button id="reload" class="quiet">Reload app</button></div>
 </main><footer><span>SORT A LITTLE. SEE MORE.</span><a href="https://github.com/lambdawalker/pwa.smolvlm2" target="_blank" rel="noreferrer">Open source ↗</a></footer>

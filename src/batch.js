@@ -12,6 +12,7 @@ import { DEFAULT_MODEL, MODELS, getModel } from './models.js';
 import { CATEGORIES, CATEGORY_PROMPT, runBatch } from './batch-core.js';
 const $=id=>document.getElementById(id);
 const downloads=createDownloadView($('file-downloads'));
+let exporting=false,exportURL=null;
 let items=[],worker=null,pending=null,running=false,supported=false,cancelled=false,installPrompt;
 const readSetting=(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}};
 const saveSetting=(key,value)=>{try{localStorage.setItem(key,value);}catch{}};
@@ -40,9 +41,11 @@ $('batch-model').onchange=()=>{
 const monitor=watchOperation(stage=>{logEvent('operation-slow',{stage});status(`Still waiting: ${stage}. You can stop and copy the troubleshooting report below.`);},stage=>{logEvent('operation-timeout',{stage});const p=pending;pending=null;stopWorker();p?.reject(new Error(`No progress for 3 minutes during ${stage}. Retry or copy the troubleshooting report.`));});
 const status=text=>{$('status').textContent=text;};
 function render(){
- $('cloud-consent').disabled=running;$('batch-model').disabled=running||(!installed.length&&!cloudEnabled);$('category-prompt').disabled=running;$('reset-prompt').disabled=running;
- $('pick').disabled=running;$('clear').disabled=running||!items.length;$('start').disabled=running||!canRun()||!items.some(i=>i.state==='pending');$('start').textContent=items.some(i=>i.state==='done')?'Continue categorizing':'Categorize photos';
- $('cancel').hidden=!running;$('spinner').hidden=!running;$('retry').hidden=running||!items.some(i=>i.state==='error');$('reload').disabled=running;
+ const busy=running||exporting;
+ $('export-document').disabled=exporting||busy||!items.some(item=>item.state==='done');
+ $('cloud-consent').disabled=busy;$('batch-model').disabled=busy||(!installed.length&&!cloudEnabled);$('category-prompt').disabled=busy;$('reset-prompt').disabled=busy;
+ $('pick').disabled=busy;$('clear').disabled=busy||!items.length;$('start').disabled=busy||!canRun()||!items.some(i=>i.state==='pending');$('start').textContent=items.some(i=>i.state==='done')?'Continue categorizing':'Categorize photos';
+ $('cancel').hidden=!busy;$('spinner').hidden=!busy;$('retry').hidden=busy||!items.some(i=>i.state==='error');$('reload').disabled=busy;
  const finished=items.filter(i=>['done','review','error'].includes(i.state)).length;
  $('summary').textContent=items.length?`${finished} of ${items.length} processed · ${items.filter(i=>i.state==='done').length} categorized · ${items.filter(i=>['review','error'].includes(i.state)).length} need attention`:'No photos selected.';
  $('batch-progress').hidden=!items.length;$('batch-progress').max=items.length||1;$('batch-progress').value=finished;
@@ -55,8 +58,7 @@ function render(){
   if(!members.length){const empty=document.createElement('p');empty.className='small';empty.textContent='Photos in this category will appear here.';grid.append(empty);}
   for(const item of members){
    const card=document.createElement('article');card.className='photo-card';
-   if(item.thumbnail){const img=document.createElement('img');img.src=item.thumbnail;img.alt=item.file.name;img.loading='lazy';card.append(img);}
-   const name=document.createElement('p');name.textContent=item.file.name;card.append(name);
+   if(item.thumbnail){const img=document.createElement('img');img.src=item.thumbnail;img.alt=item.description||'Selected photo';img.loading='lazy';card.append(img);}
    const state=document.createElement('p');state.className='small';state.textContent=item.state==='processing'?'Looking closely…':item.error||(item.state==='pending'?'Waiting':item.category);card.append(state);
    if(item.description){const description=document.createElement('p');description.className='card-description';description.textContent=item.description;card.append(description);}
    const details=document.createElement('details');details.className='card-details';const detailTitle=document.createElement('summary');detailTitle.textContent='Details';details.append(detailTitle);
@@ -65,7 +67,7 @@ function render(){
    if(item.decodedHash){const decoded=document.createElement('p');decoded.className='small';decoded.textContent=`Decoded pixel ID: ${item.decodedHash.slice(0,HASH_LABEL_LENGTH)} · Model image tensor: ${JSON.stringify(item.tensors?.pixel_values||[])}`;details.append(decoded);}
    if(item.rawOutput!==undefined){const raw=document.createElement('pre');raw.className='raw-output';raw.textContent=item.rawOutput;const heading=document.createElement('p');heading.textContent='Raw model output';details.append(heading,raw);}
    card.append(details);
-   const label=document.createElement('label');label.textContent='Category';const select=document.createElement('select');select.disabled=running;
+   const label=document.createElement('label');label.textContent='Category';const select=document.createElement('select');select.disabled=busy;
    for(const value of ['',...CATEGORIES]){const option=document.createElement('option');option.value=value;option.textContent=value||'Choose category';select.append(option);}select.value=item.category||'';
    select.onchange=()=>{if(!select.value)return;item.category=select.value;item.state='done';item.error='';render();};label.append(select);card.append(label);grid.append(card);
   }
@@ -118,11 +120,11 @@ $('start').onclick=async()=>{
   if(cancelled)return;
   await runBatch(items,async item=>{
    activeItem=item;item.promptHash=promptHash;item.model=selectedModel;item.precision=precision;
-   status(`Processing ${items.indexOf(item)+1} of ${items.length}: ${item.file.name}`);
+   status(`Processing ${items.indexOf(item)+1} of ${items.length}`);
    logEvent('photo-prepare-start',{index:items.indexOf(item),bytes:item.file.size,mime:item.file.type});
    const photo=await preparePhoto(item.file,{centerCrop:true});
    item.info=photo.info;logEvent('photo-prepare-complete',{index:items.indexOf(item),...photo.info,width:photo.width,height:photo.height});if(cancelled)throw Error('Stopped');
-   item.thumbnail=await thumbnail(photo);if(cancelled)throw Error('Stopped');render();
+   item.exportImage=photo.url;item.thumbnail=await thumbnail(photo);if(cancelled)throw Error('Stopped');render();
    if(!isCloud())return request('describe',{image:photo.url,prompt});
    cloudController=new AbortController();const controller=cloudController;
    const timeout=setTimeout(()=>controller.abort(),30000);
@@ -152,3 +154,18 @@ const updateSW=registerSW({onNeedRefresh(){$('update').hidden=false;}});$('reloa
  installed=installed.filter(key=>getModel(key).family!=='florence');$('batch-model').replaceChildren();for(const key of installed){const option=document.createElement('option');option.value=key;option.textContent=getModel(key).label;$('batch-model').append(option);}
  if(cloudEnabled){const option=document.createElement('option');option.value=CLOUD_MODEL;option.textContent=CLOUD_INFO.label;$('batch-model').append(option);}
  const saved=readSetting('lens-model',CLOUD_MODEL);selectedModel=saved===CLOUD_MODEL&&cloudEnabled?CLOUD_MODEL:supported&&installed.includes(saved)?saved:cloudEnabled?CLOUD_MODEL:installed[0]||DEFAULT_MODEL;$('batch-model').value=installed.length||cloudEnabled?selectedModel:'';$('no-models').hidden=!!installed.length||cloudEnabled;modelDetails();status(cloudEnabled||supported?'Choose photos to begin.':'WebGPU is unavailable and cloud mode is not configured.');render();})();
+
+$('export-document').onclick=async()=>{
+ if(exporting||running)return;
+ exporting=true;render();$('export-status').textContent='Creating document…';$('export-save').hidden=true;
+ try{
+  const type=$('export-type').value;
+  const options={type,perPage:$('export-count').value,columns:$('export-columns').value,layout:$('export-layout').value};
+  const {createDocument}=await import('./export-document.js');
+  const blob=await createDocument(items,options);
+  if(exportURL)URL.revokeObjectURL(exportURL);
+  exportURL=URL.createObjectURL(blob);const link=$('export-save');link.href=exportURL;link.download=`little-lens-${new Date().toISOString().slice(0,10)}.${type}`;link.hidden=false;link.textContent='Download document';
+  $('export-status').textContent='Ready. Tap Download document to save.';
+ }catch(error){$('export-status').textContent=error.message||'Could not create the document. Try fewer photos.';}
+ finally{exporting=false;render();}
+};
