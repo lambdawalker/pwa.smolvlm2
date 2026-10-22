@@ -15,8 +15,8 @@ export const defaults = {
   "document": {
     "type": "docx",
     "orientation": "portrait",
-    "rows": 4,
-    "columns": 3,
+    "rows": 7,
+    "columns": 2,
     "layout": "table",
     "addDescription": false
   }
