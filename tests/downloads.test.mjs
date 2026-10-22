@@ -15,7 +15,7 @@ test('failed requests release slots and unknown sizes still load',async()=>{
 });
 test('file progress merges network URLs with loader filenames and identifies cache hits',async()=>{
  const {createDownloadView}=await import('../src/download-view.js');
- const element=()=>({children:[],append(...v){this.children.push(...v);},replaceChildren(){this.children=[];},setAttribute(){},removeAttribute(){delete this.value;}});
+ const element=()=>({children:[],append(...v){this.children.push(...v);},replaceChildren(...v){this.children=[...v];},setAttribute(){},removeAttribute(){delete this.value;}});
  const previous=globalThis.document;globalThis.document={createElement:element};
  try{const container=element();const view=createDownloadView(container);
  view.update({file:'onnx/model.onnx',status:'initiate'});
