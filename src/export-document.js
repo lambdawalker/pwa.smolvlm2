@@ -34,7 +34,7 @@ async function word(plan){
 }
 async function powerpoint(plan){
  const {default:PptxGenJS}=await import('pptxgenjs');
- const pptx=new PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='Little Lens';pptx.subject='Categorized photos';pptx.title='Photo categories';pptx.lang='en-US';
+ const pptx=new PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='Audit';pptx.subject='Categorized photos';pptx.title='Photo categories';pptx.lang='en-US';
  const gap=plan.layout==='cards'?.16:0,w=(12.33-gap*(plan.columns-1))/plan.columns,h=(5.85-gap*(plan.rows-1))/plan.rows;
  for(const page of plan.pages){
   const slide=pptx.addSlide();slide.background={color:'FFFFFF'};

@@ -1,4 +1,4 @@
-# Little Lens · SmolVLM2 PWA
+# Audit · SmolVLM2 PWA
 
 A mobile-first, installable photo categorizer and describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with a choice of five vision models. On-device models need no account or API key. Optional hosted Gemma categorization sends prepared photos to Google through the Go backend, only after explicit consent.
 
@@ -137,7 +137,7 @@ The existing resize reduces the image data sent to the worker and its decoding w
 
 ### Troubleshooting stalled inference
 
-Open **Troubleshooting logs** at the bottom of a page and choose **Copy diagnostic report** after reproducing a failure. The same timestamped entries appear in the browser console with the `[Little Lens]` prefix. Reports contain browser capabilities, model stages, GPU limits, input tensor dimensions, and errors, without intentionally recording images, filenames, prompt text, or generated output. Review reports before sharing. The categorization worker warns after 45 seconds without messages and is terminated after three minutes without messages; loading can be retried. This is diagnostic instrumentation, not evidence that every device's inference issue is fixed.
+Open **Troubleshooting logs** at the bottom of a page and choose **Copy diagnostic report** after reproducing a failure. The same timestamped entries appear in the browser console with the `[Audit]` prefix. Reports contain browser capabilities, model stages, GPU limits, input tensor dimensions, and errors, without intentionally recording images, filenames, prompt text, or generated output. Review reports before sharing. The categorization worker warns after 45 seconds without messages and is terminated after three minutes without messages; loading can be retried. This is diagnostic instrumentation, not evidence that every device's inference issue is fixed.
 
 ### Comparing devices
 

@@ -8,14 +8,14 @@ import { resolvePrompt } from '../src/core.js';
 import { CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION } from '../src/cloud.js';
 import { MODELS,getModel } from '../src/models.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function app(supported=true,installed=Object.keys(MODELS),cloud=false,cloudClassify=async()=>'Indoors'){
+async function app(supported=true,installed=Object.keys(MODELS),cloud=false,cloudClassify=async()=>'Indoors',auto=false){
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const source=readFileSync(new URL('../src/batch.js',import.meta.url),'utf8').replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replaceAll('import.meta.url',"'https://example.test/src/batch.js'");
  const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},removeAttribute(){},setAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const workers=[];class Worker{constructor(){workers.push(this);this.sent=[];}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
  vm.runInNewContext(source,{appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
- await tick();return {e:elements,w:workers};
+ await tick();if(!auto)elements['auto-categorize'].checked=false;return {e:elements,w:workers};
 }
 test('main page uses 256M, sends images serially and resumes after stop',async()=>{
  const {e,w}=await app();e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});
@@ -78,4 +78,13 @@ test('Google is default even with local models, and layouts switch',async()=>{
  assert.equal(e['settings-page'].hidden,true);assert.equal(e['categorize-page'].hidden,false);
  e['list-view'].onclick();assert.match(e.groups.className,/list-view/);
  e['grid-view'].onclick();assert.equal(e.groups.className.includes('list-view'),false);
+});
+
+test('automatic mode starts on selection and the same button stops processing',async()=>{
+ const {e,w}=await app(true,['256m'],false,undefined,true);
+ assert.equal(e['auto-categorize'].checked,true);
+ e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});
+ assert.equal(w.length,1);assert.equal(e.start.textContent,'Stop');assert.equal(e.start.disabled,false);
+ assert.equal(e['batch-progress'].max,2);assert.equal(e['batch-progress'].value,0);
+ await e.start.onclick();await tick();assert.equal(w[0].stopped,true);assert.equal(e.start.textContent,'Categorize');
 });

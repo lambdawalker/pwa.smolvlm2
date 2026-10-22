@@ -131,7 +131,7 @@ func wizard() error {
 	if _, err = os.Stat(filepath.Join(infra, "Pulumi.yaml")); err != nil {
 		return fmt.Errorf("start with deploy.bat or deploy.sh from the repository")
 	}
-	fmt.Println("Little Lens — AWS + Cloudflare deployment wizard")
+	fmt.Println("Audit — AWS + Cloudflare deployment wizard")
 	fmt.Println("Target: audit.apexfission.com. On-device AI plus optional hosted Gemma.")
 	fmt.Println("1/6 Check tools and accounts")
 	for _, name := range []string{"node", "npm", "go", "aws", "pulumi"} {

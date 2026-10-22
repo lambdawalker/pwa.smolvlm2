@@ -51,7 +51,7 @@ func run() error {
 		}
 		listener.Close()
 	}
-	fmt.Println("Little Lens — local development")
+	fmt.Println("Audit — local development")
 	key := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
 	if key == "" {
 		fmt.Println("Google API key: https://aistudio.google.com/apikey")

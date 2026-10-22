@@ -3,7 +3,7 @@ const clean=value=>String(value).replace(/data:[^\s"']+/g,'[image data omitted]'
 export function logEvent(event,details={}){
  const entry={time:new Date().toISOString(),event,...details};
  const line=clean(JSON.stringify(entry));entries.push(line);if(entries.length>250)entries.shift();
- console.info('[Little Lens]',line);
+ console.info('[Audit]',line);
  return line;
 }
 export function installDiagnostics(){
@@ -14,7 +14,14 @@ export function installDiagnostics(){
  const output=document.createElement('textarea');output.readOnly=true;output.rows=8;output.setAttribute('aria-label','Diagnostic report');
  const report=()=>entries.join('\n');panel.ontoggle=()=>{output.value=report();};
  copy.onclick=async()=>{output.value=report();try{await navigator.clipboard.writeText(output.value);copy.textContent='Report copied';}catch{output.focus();output.select();copy.textContent='Select and copy the report below';}};
- panel.append(title,help,copy,output);document.querySelector('main').append(panel);
+ panel.append(title,help,copy,output);
+ let enabled=false;try{enabled=localStorage.getItem('lens-diagnostics')==='true';}catch{}
+ const toggle=document.getElementById('show-diagnostics');
+ const slot=document.getElementById('diagnostics-slot');
+ panel.hidden=!enabled;
+ if(slot)slot.append(panel);else document.querySelector('main').append(panel);
+ if(toggle){toggle.checked=enabled;toggle.onchange=()=>{panel.hidden=!toggle.checked;try{localStorage.setItem('lens-diagnostics',String(toggle.checked));}catch{}};}
+ 
  window.addEventListener('error',event=>logEvent('page-error',{message:clean(event.message),stack:clean(event.error?.stack||'')}));
  window.addEventListener('unhandledrejection',event=>logEvent('unhandled-rejection',{message:clean(event.reason?.message||event.reason),stack:clean(event.reason?.stack||'')}));
 }

@@ -41,3 +41,5 @@ $('cancel').onclick=()=>{stop();status('Cancelled. Completed cached files can be
 window.addEventListener('pagehide',stop);
 registerSW();
 (async()=>{try{const adapter=await navigator.gpu?.requestAdapter();supported=!!adapter;fp16=!!adapter?.features?.has('shader-f16');installed=await availableModels(fp16);}catch{}render();status(supported?'Choose a model to download or verify.':'This browser does not provide a compatible WebGPU adapter.');})();
+
+let installPrompt;window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;document.getElementById('install').hidden=false;});document.getElementById('install').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;document.getElementById('install').hidden=true;}};

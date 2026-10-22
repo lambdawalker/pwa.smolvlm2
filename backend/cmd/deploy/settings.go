@@ -116,7 +116,7 @@ func ensureState(root string, s *settings) error {
 		if !strings.Contains(string(details), "NotFoundException") {
 			return fmt.Errorf("cannot access state KMS key: %s", details)
 		}
-		data, err = output(root, "aws", "kms", "create-key", "--description", "Little Lens Pulumi secrets", "--region", s.Region, "--query", "KeyMetadata.Arn", "--output", "text")
+		data, err = output(root, "aws", "kms", "create-key", "--description", "Audit Pulumi secrets", "--region", s.Region, "--query", "KeyMetadata.Arn", "--output", "text")
 		if err != nil {
 			return err
 		}

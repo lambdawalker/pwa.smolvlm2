@@ -1,4 +1,4 @@
-# Deploy Little Lens to AWS
+# Deploy Audit to AWS
 
 ## What runs where
 
