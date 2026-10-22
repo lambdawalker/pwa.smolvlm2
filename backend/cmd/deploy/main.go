@@ -171,9 +171,9 @@ func wizard() error {
 			return err
 		}
 	}
-	identity, err := output(root, "aws", "sts", "get-caller-identity", "--output", "json")
+	identity, err := awsIdentity(root, profile)
 	if err != nil {
-		return fmt.Errorf("AWS authentication failed; run aws sso login for your profile and rerun")
+		return err
 	}
 	var caller struct {
 		Account string
@@ -241,7 +241,7 @@ func wizard() error {
 	if err = os.Setenv("PULUMI_BACKEND_URL", backendURL(setup)); err != nil {
 		return err
 	}
-	if err = run(infra, "pulumi", "login", backendURL(setup), "--non-interactive"); err != nil {
+	if err = loginStateBackend(infra, root, profile, backendURL(setup), caller.Account); err != nil {
 		return err
 	}
 	// List first so authentication/backend errors are never treated as a missing stack.
