@@ -1,3 +1,4 @@
+import { appendPhotoDetails } from './photo-details.js';
 import './style.css';
 import { CLOUD_MODEL, CLOUD_INFO, CLOUD_PRECISION, cloudAvailable, classifyCloud } from './cloud.js';
 import { sha256, HASH_LABEL_LENGTH, precisionLabel, imageInfoLabel } from './input-info.js';
@@ -62,10 +63,7 @@ function render(){
    const state=document.createElement('p');state.className='small';state.textContent=item.state==='processing'?'Looking closely…':item.error||(item.state==='pending'?'Waiting':item.category);card.append(state);
    if(item.description){const description=document.createElement('p');description.className='card-description';description.textContent=item.description;card.append(description);}
    const details=document.createElement('details');details.className='card-details';const detailTitle=document.createElement('summary');detailTitle.textContent='Details';details.append(detailTitle);
-   if(item.info){const info=document.createElement('p');info.className='small raw-output';info.textContent=imageInfoLabel(item.info);details.append(info);}
-   if(item.promptHash){const info=document.createElement('p');info.className='small';info.textContent=`Prompt ID: ${item.promptHash.slice(0,HASH_LABEL_LENGTH)} · ${batchModel(item.model).label} · ${item.model===CLOUD_MODEL?CLOUD_PRECISION:precisionLabel(item.precision)}`;details.append(info);}
-   if(item.decodedHash){const decoded=document.createElement('p');decoded.className='small';decoded.textContent=`Decoded pixel ID: ${item.decodedHash.slice(0,HASH_LABEL_LENGTH)} · Model image tensor: ${JSON.stringify(item.tensors?.pixel_values||[])}`;details.append(decoded);}
-   if(item.rawOutput!==undefined){const raw=document.createElement('pre');raw.className='raw-output';raw.textContent=item.rawOutput;const heading=document.createElement('p');heading.textContent='Raw model output';details.append(heading,raw);}
+   appendPhotoDetails(details,item,item.model?batchModel(item.model).label:'unknown',item.model===CLOUD_MODEL);
    card.append(details);
    const label=document.createElement('label');label.textContent='Category';const select=document.createElement('select');select.disabled=busy;
    for(const value of ['',...CATEGORIES]){const option=document.createElement('option');option.value=value;option.textContent=value||'Choose category';select.append(option);}select.value=item.category||'';

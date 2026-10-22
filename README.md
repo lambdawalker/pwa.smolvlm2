@@ -157,3 +157,9 @@ Before starting cloud processing, users must check the Google-upload consent box
 The API is currently public, with API Gateway throttling and strict upload limits. The origin check is not authentication: other clients can consume the shared quota. Use this as a limited demo; add user authentication before broader public use. The API key stays server-side and is stored in KMS-encrypted Pulumi config and Lambda environment configuration. Static-only hosting (such as GitHub Pages) does not offer cloud mode.
 
 For local development, set `GEMINI_API_KEY` in the backend process and run `go run ./cmd/api` from `backend/`, alongside `npm run dev`. The Vite API proxy is already configured. To rotate the deployed key, set `GEMINI_API_KEY` locally and rerun the wizard. To disable cloud mode, remove the environment variable, run `pulumi config rm geminiApiKey` in `infra/`, and redeploy (Enter skips setup when prompted).
+
+### Local development with Google
+
+Run `local.bat` on Windows or `./local.sh` on macOS/Linux. Install Node (compatible with Vite), npm, and Go 1.25+ first. The launcher asks for a hidden Google API key, or reuses `GEMINI_API_KEY` if set. Enter without a key enables only on-device models. The key is passed to the local Go API, never written to disk or sent to Vite.
+
+The launcher runs `npm ci`, builds the API, and starts both servers. Open **http://localhost:5173**. Vite proxies `/api` to the Go backend at `127.0.0.1:8080`. Both ports must be free. Press Ctrl+C to stop. No AWS deployment or credentials are required; Google classification still requires internet and sends selected images to Google. These launchers bind to loopback for desktop testing, not phone access over LAN.

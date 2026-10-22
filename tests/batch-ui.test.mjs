@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { appendPhotoDetails as renderPhotoDetails } from '../src/photo-details.js';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
@@ -13,7 +14,7 @@ async function app(supported=true,installed=Object.keys(MODELS),cloud=false,clou
  const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},removeAttribute(){},setAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const workers=[];class Worker{constructor(){workers.push(this);this.sent=[];}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
+ vm.runInNewContext(source,{appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
  await tick();return {e:elements,w:workers};
 }
 test('main page uses 256M, sends images serially and resumes after stop',async()=>{
@@ -51,7 +52,7 @@ test('only downloaded models are offered and an empty cache cannot start',async(
 test('custom categorization prompt is validated and passed with the image',async()=>{
  const {e,w}=await app();e.photos.onchange({target:{files:[{name:'a.jpg'}]}});e['category-prompt'].value=' ';await e.start.onclick();assert.equal(w.length,0);
  e['category-prompt'].value='  Pick Indoors or Outdoors.  ';const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();assert.equal(w[0].sent[1].prompt,'Pick Indoors or Outdoors.');assert.equal(w[0].sent[1].cachedOnly,true);w[0].onmessage({data:{type:'complete',text:'An uncertain answer'}});await run;
- const cards=e.groups.children.flatMap(s=>s.children[1].children);assert.ok(cards.some(card=>card.children?.some(child=>child.children?.some(n=>n.textContent==='An uncertain answer'))));
+ const cards=e.groups.children.flatMap(s=>s.children[1].children);assert.ok(cards.some(card=>card.children?.some(child=>child.children?.some(n=>n.children?.some(span=>span.textContent==='An uncertain answer')))));
 });
 
 test('cloud works without WebGPU or downloads, requires consent and preserves raw answers',async()=>{
