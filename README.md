@@ -169,3 +169,7 @@ The launcher runs `npm ci`, builds the API, and starts both servers. Open **http
 Edit `config/categorization-defaults.yaml` to set interface and document defaults. The default document uses portrait orientation with **4 rows × 3 columns** (12 images per page). The YAML controls the model, prompt, language, view, automatic start, cloud concurrency, consent, handedness, diagnostic visibility, document type, orientation, rows, columns, layout, and description toggle. Saved browser preferences override the corresponding interface defaults. Reset Prompt restores the YAML prompt.
 
 `npm run defaults` validates the YAML and refreshes `src/defaults.generated.js`; never edit the generated file. This also runs automatically with `npm test`, `npm run dev`, production builds, and the local launcher. Rebuild and deploy to apply YAML changes to the hosted app.
+
+### Security dependency pins
+
+Vite is pinned to 7.3.7. Scoped npm overrides select `image-size` 2.0.3 under PptxGenJS and `sharp` 0.35.5 under Transformers.js, addressing the current parser/native-library advisories without changing the app's PptxGenJS 4.0.1 or Transformers.js 3.8.1 APIs. Keep these overrides until upstream dependency ranges include patched versions and the overrides can be removed safely. Run `npm ci`, `npm audit`, `npm test`, and `npm run build:aws` after changing them. Tests cover Office export generation and actual image decoding/resizing through Transformers.js with the patched native dependency; they do not replace mobile model inference checks.
