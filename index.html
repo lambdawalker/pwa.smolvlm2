@@ -13,6 +13,7 @@
 <input id="photos" type="file" accept="image/*" multiple hidden>
 <p class="small">Keep this page open while processing. Results last for this visit and do not move or change files in your gallery. Review the categories; AI can make mistakes.</p>
 <div aria-live="polite" role="status"><span id="spinner" class="spinner" hidden></span> <span id="status">Checking browser compatibility…</span></div>
+<div id="file-downloads" class="file-downloads" aria-label="Model file downloads"></div>
 <div id="download" hidden><progress id="download-progress" max="100" aria-label="Model file download"></progress><p id="download-label" class="small"></p></div>
 <p id="summary" class="small">No photos selected.</p><progress id="batch-progress" value="0" max="1" aria-label="Photos processed" hidden></progress>
 <button id="retry" class="quiet" hidden>Retry failed photos</button>

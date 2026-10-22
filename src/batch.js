@@ -1,10 +1,12 @@
 import './style.css';
+import { createDownloadView } from './download-view.js';
 import { registerSW } from 'virtual:pwa-register';
 import { preparePhoto } from './image.js';
 import { friendlyError } from './core.js';
 import { DEFAULT_MODEL } from './models.js';
 import { CATEGORIES, CATEGORY_PROMPT, runBatch } from './batch-core.js';
 const $=id=>document.getElementById(id);
+const downloads=createDownloadView($('file-downloads'));
 let items=[],worker=null,pending=null,running=false,supported=false,cancelled=false,installPrompt;
 const status=text=>{$('status').textContent=text;};
 function render(){
@@ -39,7 +41,7 @@ function request(type,extra={}){
   worker.onmessage=({data})=>{
    if(worker!==current)return;
    if(data.type==='progress'){
-    $('download').hidden=false;const p=data.progress;
+    $('download').hidden=false;const p=data.progress;downloads.update(p);
     if(Number.isFinite(p.progress))$('download-progress').value=p.progress;else $('download-progress').removeAttribute('value');
     $('download-label').textContent=`${p.file?.split('/').at(-1)||'Model'} · ${Math.round((p.loaded||0)/1024/1024)} MB`;
    }
@@ -57,7 +59,7 @@ async function thumbnail(photo){
 $('pick').onclick=()=>$('photos').click();
 $('photos').onchange=event=>{for(const file of event.target.files||[])items.push({file,state:'pending',category:null});event.target.value='';render();if(supported)status('Ready. Tap Categorize photos to start.');};
 $('start').onclick=async()=>{
- if(running||!supported)return;running=true;cancelled=false;render();status('Preparing SmolVLM2 256M. The first download can take a few minutes…');
+ if(running||!supported)return;running=true;cancelled=false;downloads.reset();render();status('Preparing SmolVLM2 256M. The first download can take a few minutes…');
  navigator.storage?.persist?.().catch(()=>{});
  try{
   await request('load');

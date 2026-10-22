@@ -120,3 +120,7 @@ The previous single-photo experience, including all five model choices and custo
 ## Dependency maintenance
 
 `package.json` scopes two overrides to their upstream consumers: `onnxruntime-node` uses `global-agent` 4.1.3 to remove the abandoned `boolean` dependency, and `workbox-build` uses `glob` 13.0.6 instead of deprecated glob 11. The ONNX runtime and Transformers.js versions are unchanged. Keep `package-lock.json` committed and use `npm ci` for reproducible installs. Revisit these overrides when upgrading the parent packages. These overrides address the deprecation warnings; they do not resolve every finding reported by `npm audit`.
+
+### Model download progress
+
+Both pages show one progress bar per requested file. Model transfers are limited to three at once, with slots held until the response body finishes. Files already queued are started smallest-first using size metadata for the pinned Hugging Face revision; unknown sizes go last. Configuration dependencies can introduce files later, so this is a priority order among ready requests, not a global ordering of every model file. Cached files are reused without network transfers. If size metadata is unavailable, loading still works with the three-transfer limit. Stopping terminates the worker and its pending downloads.

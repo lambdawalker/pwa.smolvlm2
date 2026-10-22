@@ -1,10 +1,12 @@
 import './style.css';
+import { createDownloadView } from './download-view.js';
 import { registerSW } from 'virtual:pwa-register';
 import { resolvePrompt, friendlyError } from './core.js';
 import { preparePhoto } from './image.js';
 import { MODELS, DEFAULT_MODEL, getModel } from './models.js';
 import { florenceTask } from './inference.js';
 const $=id=>document.getElementById(id);
+const downloads=createDownloadView($('file-downloads'));
 let photo=null,worker=null,busy=false,supported=false,pickVersion=0,installPrompt,modelReady=false,loadingModel=false;
 let selectedModel=DEFAULT_MODEL,rememberedModel=false;
 try{const saved=localStorage.getItem('little-lens-model');if(Object.hasOwn(MODELS,saved)){selectedModel=saved;rememberedModel=true;}}catch{}
@@ -17,7 +19,7 @@ function showSetup(){ $('setup').hidden=false;$('workspace').hidden=true;$('cont
 function loadModel(){
  if(busy||!supported)return;
  try{localStorage.setItem('little-lens-model',selectedModel);}catch{}
- loadingModel=true;setBusy(true);$('progress-area').hidden=false;$('progress').removeAttribute('value');$('progress-label').textContent='Connecting to model storage…';$('load-model').textContent='Loading model…';$('step-model').textContent=`Downloading and preparing ${getModel(selectedModel).label}…`;status('Starting the model. This can take a few minutes on a phone.');
+ downloads.reset();loadingModel=true;setBusy(true);$('progress-area').hidden=false;$('progress').removeAttribute('value');$('progress-label').textContent='Connecting to model storage…';$('load-model').textContent='Loading model…';$('step-model').textContent=`Downloading and preparing ${getModel(selectedModel).label}…`;status('Starting the model. This can take a few minutes on a phone.');
  navigator.storage?.persist?.().catch(()=>{});
  try{startWorker().postMessage({type:'load',model:selectedModel});}catch(e){fail(e.message);}
 }
@@ -32,7 +34,7 @@ function startWorker(){
   switch(data.type){
    case 'loading':status('Downloading or restoring the model…');$('progress-area').hidden=false;break;
    case 'progress':{
-    const p=data.progress;if(p.status==='progress'){
+    const p=data.progress;downloads.update(p);if(p.status==='progress'){
      if(Number.isFinite(p.progress))$('progress').value=p.progress;else $('progress').removeAttribute('value');
      $('progress-label').textContent=`${p.file?.split('/').at(-1)||'Model file'} · ${Math.round(p.loaded/1024/1024)||0} MB${p.total?` / ${Math.round(p.total/1024/1024)} MB`:''}`;
     }else if(p.status==='done'){$('progress-label').textContent='File ready. Preparing the remaining model…';}

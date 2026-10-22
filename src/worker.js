@@ -1,4 +1,5 @@
 import { AutoProcessor, AutoTokenizer, AutoModelForVision2Seq, Florence2ForConditionalGeneration, Moondream1ForConditionalGeneration, RawImage, TextStreamer, env } from '@huggingface/transformers';
+import { installModelDownloads } from './downloads.js';
 import { getModel } from './models.js';
 import { florenceTask, modelDtypes, prepareInputs, decodeResult } from './inference.js';
 env.allowLocalModels=false;
@@ -18,6 +19,7 @@ self.onmessage=async ({data})=>{
   if(!model){
    send('loading');
    const progress_callback=p=>send('progress',{progress:p});
+   await installModelDownloads(selected,p=>progress_callback({...p,transfer:true}));
    processor=await AutoProcessor.from_pretrained(selected.id,{progress_callback,revision:selected.revision});
    const fp16=adapter.features.has('shader-f16');
    tokenizer=selected.family==='moondream'?await AutoTokenizer.from_pretrained(selected.id,{progress_callback,revision:selected.revision}):processor.tokenizer;
