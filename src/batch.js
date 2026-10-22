@@ -62,21 +62,15 @@ const mobileCategories=()=>window.matchMedia?.('(max-width: 700px)').matches??fa
 function syncCategorySelection(){
  for(const page of categoryPages){const active=page.category===activeCategory;page.section.className='category-group'+(active?' active-category':'');page.tab.setAttribute('aria-selected',String(active));page.tab.tabIndex=active?0:-1;}
 }
-function selectCategory(category,smooth=true){
+function selectCategory(category,smooth=true,direction=1){
  const index=categoryPages.findIndex(page=>page.category===category);if(index<0)return;
- activeCategory=category;syncCategorySelection();
- if(mobileCategories())$('groups').scrollTo?.({left:index*$('groups').clientWidth,behavior:smooth?'smooth':'instant'});
+ const changed=activeCategory!==category;activeCategory=category;syncCategorySelection();
+ if(changed&&smooth&&mobileCategories())categoryPages[index].section.className+=' '+(direction<0?'category-enter-left':'category-enter-right');
 }
-$('groups').onscroll=()=>{
- if(!mobileCategories()||!$('groups').clientWidth)return;
- const index=Math.round($('groups').scrollLeft/$('groups').clientWidth);
- if(categoryPages[index]){activeCategory=categoryPages[index].category;syncCategorySelection();}
-};
-window.addEventListener('resize',()=>selectCategory(activeCategory,false));
 function hideIcon(id,hidden){const icon=$(id);icon.hidden=hidden;if(hidden)icon.setAttribute('hidden','');else icon.removeAttribute('hidden');}
 $('image-concurrency').value=readSetting('audit-concurrency',String(defaults.interface.simultaneousImages));
 $('image-concurrency').onchange=()=>saveSetting('audit-concurrency',$('image-concurrency').value);
-function moveCategory(direction,from=activeCategory){const index=categoryPages.findIndex(page=>page.category===from);if(categoryPages.length)selectCategory(categoryPages[(index+direction+categoryPages.length)%categoryPages.length].category);}
+function moveCategory(direction,from=activeCategory){const index=categoryPages.findIndex(page=>page.category===from);if(categoryPages.length)selectCategory(categoryPages[(index+direction+categoryPages.length)%categoryPages.length].category,true,direction);}
 let swipe=null;
 $('categorize-page').addEventListener('touchstart',event=>{if(!mobileCategories()||event.touches.length!==1||event.target.closest?.('button,input,select,textarea,a,dialog,#action-bar,#document-settings-panel')){swipe=null;return;}swipe={x:event.touches[0].clientX,y:event.touches[0].clientY,category:activeCategory};},{passive:true});
 $('categorize-page').addEventListener('touchend',event=>{if(!swipe)return;const start=swipe;swipe=null;const touch=event.changedTouches[0];if(!touch)return;const dx=touch.clientX-start.x,dy=touch.clientY-start.y;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.3)moveCategory(dx<0?1:-1,start.category);},{passive:true});

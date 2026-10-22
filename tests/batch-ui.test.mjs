@@ -10,14 +10,14 @@ import { resolvePrompt } from '../src/core.js';
 import { CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION } from '../src/cloud.js';
 import { MODELS,getModel } from '../src/models.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function app(supported=true,installed=Object.keys(MODELS),cloud=false,cloudClassify=async()=>'Indoors',auto=false){
+async function app(supported=true,installed=Object.keys(MODELS),cloud=false,cloudClassify=async()=>'Indoors',auto=false,mobile=false){
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const source=readFileSync(new URL('../src/batch.js',import.meta.url),'utf8').replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replaceAll('import.meta.url',"'https://example.test/src/batch.js'");
  const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},addEventListener(name,handler){this.events??={};this.events[name]=handler;},showModal(){this.open=true;},close(){this.open=false;this.events?.close?.();},removeAttribute(){},setAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const originalFiles=[],revoked=[];class PhotoURL extends URL{static createObjectURL(file){originalFiles.push(file);return 'blob:original';}static revokeObjectURL(url){revoked.push(url);}}
  const workers=[];class Worker{constructor(){workers.push(this);this.sent=[];}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{defaults,getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
+ vm.runInNewContext(source,{defaults,getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{matchMedia:()=>({matches:mobile}),addEventListener(){}},registerSW:()=>()=>{}});
  await tick();elements['image-concurrency'].value='1';if(!auto)elements['auto-categorize'].checked=false;return {e:elements,w:workers,originalFiles,revoked};
 }
 test('main page uses 256M, sends images serially and resumes after stop',async()=>{
@@ -136,4 +136,13 @@ test('parallel cloud requests all abort from the unified cancel button',async()=
  const signals=[];const {e}=await app(false,[],true,async(image,prompt,signal)=>{signals.push(signal);return new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('Stopped','AbortError'))));});
  e['image-concurrency'].value='3';e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'},{name:'c.jpg'},{name:'d.jpg'}]}});const run=e.start.onclick();await tick();
  assert.equal(signals.length,3);e.pick.onclick();await run;assert.ok(signals.every(signal=>signal.aborted));assert.match(e.summary.textContent,/0 of 4 processed/);
+});
+
+test('mobile swipes over empty space wrap once and vertical gestures leave the category unchanged',async()=>{
+ const {e,w}=await app(true,['256m'],false,undefined,false,true);
+ e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();w[0].onmessage({data:{type:'complete',text:'{"category":"Indoors","description":"Room"}'}});await tick();w[0].onmessage({data:{type:'complete',text:'{"category":"Outdoors","description":"Yard"}'}});await run;
+ const swipe=(x,y,target={closest:()=>null})=>{e['categorize-page'].events.touchstart({touches:[{clientX:150,clientY:200}],target});e['categorize-page'].events.touchend({changedTouches:[{clientX:x,clientY:y}]});};
+ const active=()=>e.groups.children.findIndex(page=>page.className.includes('active-category'));
+ assert.equal(active(),0);swipe(50,205);assert.equal(active(),1);swipe(50,205);assert.equal(active(),0);swipe(250,205);assert.equal(active(),1);
+ swipe(155,350);assert.equal(active(),1);swipe(50,205,{closest:()=>({})});assert.equal(active(),1);
 });
