@@ -10,13 +10,13 @@ test('export paginates categories separately and skips unfinished photos',()=>{
  const plan=exportPlan(items);
  assert.deepEqual(plan.pages.map(p=>[p.category,p.items.length]),[['Indoors',6],['Indoors',1],['Outdoors',1]]);
  assert.equal(plan.columns,2);assert.equal(plan.rows,3);
- assert.throws(()=>exportPlan(items,{perPage:12,columns:1}),/four rows/);
+ assert.throws(()=>exportPlan(items,{columns:5}),/1–4 columns/);
  assert.throws(()=>exportPlan([]),/at least one/);
  assert.throws(()=>exportPlan([{state:'done',category:'Indoors'}]),/unavailable/);
 });
 test('both document formats and layouts produce zipped Office documents',async()=>{
  for(const type of ['docx','pptx'])for(const layout of ['cards','table']){
-  const blob=await createDocument([item('Indoors'),item('Outdoors')],{type,layout});
+  const blob=await createDocument([item('Indoors'),item('Outdoors')],{type,layout,showCategory:true});
   const bytes=new Uint8Array(await blob.arrayBuffer());assert.equal(String.fromCharCode(...bytes.slice(0,2)),'PK');assert.ok(bytes.length>1000);
   const zip=await JSZip.loadAsync(bytes);
   if(type==='docx'){
@@ -29,5 +29,17 @@ test('both document formats and layouts produce zipped Office documents',async()
    if(layout==='table')assert.match(xml,/<a:tbl>/);
   }
 
+ }
+});
+
+test('image sizes determine pagination and defaults hide category headings',async()=>{
+ for(const [imageSize,rows] of [['small',4],['medium',3],['big',2]])for(const columns of [1,2,3,4]){
+  const plan=exportPlan([item('Indoors')],{imageSize,columns});assert.equal(plan.perPage,rows*columns);assert.equal(plan.showCategory,false);assert.equal(plan.showDescription,true);
+ }
+ for(const type of ['docx','pptx']){
+  const blob=await createDocument([item('Indoors')],{type,showDescription:false,showCategory:false,columns:4,imageSize:'big'});
+  const zip=await JSZip.loadAsync(await blob.arrayBuffer());
+  const path=type==='docx'?'word/document.xml':'ppt/slides/slide1.xml';const xml=await zip.file(path).async('string');
+  assert.ok(!xml.includes('Indoors'));assert.ok(!xml.includes('A bright room'));
  }
 });

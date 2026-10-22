@@ -5,7 +5,7 @@
 <header><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">◉</span> Audit</a><div class="header-actions"><button id="install" class="quiet" hidden>Install app ↗</button><details class="hamburger"><summary aria-label="Open navigation">☰</summary><nav><a href="#categorize">Categorize</a><a href="./describe.html">Describe</a><a href="#settings">Settings</a></nav></details></div></header>
 <main>
 
-<section id="settings-page" hidden><h1>Settings</h1><label class="setting-toggle"><input id="auto-categorize" type="checkbox" checked> Categorize immediately after selecting photos</label><label class="setting-toggle"><input id="show-diagnostics" type="checkbox"> Show troubleshooting logs</label><div id="diagnostics-slot"></div><label for="batch-model">Categorization model</label>
+<section id="settings-page" hidden><h1>Settings</h1><label class="setting-toggle"><input id="auto-categorize" type="checkbox" checked> Categorize immediately after selecting photos</label><label class="setting-toggle"><input id="show-diagnostics" type="checkbox"> Show troubleshooting logs</label><label class="setting-toggle"><input id="show-photo-details" type="checkbox"> Show image details</label><div id="diagnostics-slot"></div><label for="batch-model">Categorization model</label>
 <select id="batch-model" aria-describedby="batch-model-details"></select>
 <p id="no-models" hidden>No downloaded categorization models. <a href="./models.html">Download a model</a> to begin.</p>
 <div id="cloud-notice" hidden><p>Cloud Gemma sends resized photos and your prompt to Google. Google may use this content to improve its products. Internet is required.</p><label><input id="cloud-consent" type="checkbox" checked> I agree to send selected photos and the prompt to Google.</label></div>
@@ -16,7 +16,7 @@
 <h2>Downloads</h2><p><a href="./models.html">Manage on-device models →</a></p></section>
 <section id="categorize-page"><h1>Categorize</h1><p id="privacy-label" class="small"></p>
 <section class="batch-controls" aria-label="Categorize photos">
-<div class="batch-actions"><button id="pick" class="primary">＋ Choose photos</button><button id="start" class="primary" disabled>Categorize photos</button><button id="cancel" class="quiet" hidden>Stop</button><button id="clear" class="quiet" disabled>Clear photos</button></div>
+<div class="batch-actions"><button id="pick" class="primary icon-button" aria-label="Add photos" title="Add photos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="2" y="5" width="15" height="16" rx="2"/><circle cx="7" cy="10" r="1.5"/><path d="m3 18 5-5 4 4 3-3 2 2M19 1v8M15 5h8"/></svg></button><button id="start" class="primary" disabled>Categorize photos</button><button id="cancel" class="quiet" hidden>Stop</button><button id="clear" class="quiet" disabled>Clear photos</button></div>
 <input id="photos" type="file" accept="image/*" multiple hidden>
 
 <div aria-live="polite" role="status"><span id="spinner" class="spinner" hidden></span> <span id="status">Checking browser compatibility…</span></div>
@@ -24,14 +24,12 @@
 <div id="download" hidden><progress id="download-progress" max="100" aria-label="Model file download"></progress><p id="download-label" class="small"></p></div>
 <p id="summary" class="small">No photos selected.</p><progress id="batch-progress" value="0" max="1" aria-label="Photos processed" hidden></progress>
 <button id="retry" class="quiet" hidden>Retry failed photos</button>
-</section>
-<section class="export-panel"><details><summary>Export</summary><div class="export-controls">
+<div class="export-panel"><details><summary>Document settings</summary><div class="export-controls">
 <label>Document<select id="export-type"><option value="docx">Word (.docx)</option><option value="pptx">PowerPoint (.pptx)</option></select></label>
-<label>Images per page<input id="export-count" type="number" min="1" max="12" value="6"></label>
-<label>Columns<select id="export-columns"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
-<label>Layout<select id="export-layout"><option value="cards">Cards</option><option value="table">Table</option></select></label></div>
-<p class="small">Completed categories only. Up to four rows per page.</p></details><button id="export-document" class="primary" disabled>Create document</button><p id="export-status" class="small" role="status" aria-live="polite"></p><a id="export-save" hidden>Download document</a></section>
-<div class="view-switch" aria-label="Photo layout"><button id="grid-view" aria-pressed="true">Grid</button><button id="list-view" aria-pressed="false">List</button></div><div id="groups" class="category-groups"></div>
+<label>Image size<select id="export-size"><option value="small">Small</option><option value="medium" selected>Medium</option><option value="big">Big</option></select></label>
+<label>Columns<select id="export-columns"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select></label>
+<label>Layout<select id="export-layout"><option value="cards">Cards</option><option value="table">Table</option></select></label><label class="setting-toggle"><input id="export-description" type="checkbox" checked> Show description</label><label class="setting-toggle"><input id="export-category" type="checkbox"> Show category</label></div></details><button id="export-document" class="primary icon-button" aria-label="Create Word document" title="Create Word document" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 2h10l5 5v6M14 2v6h5M4 2v20h9M18 13v8m-4-4 4 4 4-4"/><text id="export-icon-letter" x="6" y="16" stroke="none" fill="currentColor" font-size="9" font-weight="700">W</text></svg></button><p id="export-status" class="small" role="status" aria-live="polite"></p><a id="export-save" hidden>Download document</a></div></section>
+<div class="view-switch" aria-label="Photo layout"><button id="grid-view" class="icon-button" title="Grid view" aria-label="Grid view" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button><button id="list-view" class="icon-button" title="List view" aria-label="List view" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 5h12M9 12h12M9 19h12"/><path d="M3 4h2v2H3zM3 11h2v2H3zM3 18h2v2H3z"/></svg></button></div><div id="groups" class="category-groups"></div>
 </section><div id="update" class="update" hidden>New version available. <button id="reload" class="quiet">Reload app</button></div>
 </main><footer><span>SORT A LITTLE. SEE MORE.</span><a href="https://github.com/lambdawalker/pwa.smolvlm2" target="_blank" rel="noreferrer">Open source ↗</a></footer>
 <script type="module" src="/src/batch.js"></script></body></html>

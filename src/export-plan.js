@@ -1,9 +1,9 @@
 import { CATEGORIES } from './batch-core.js';
-export function exportPlan(items,{type='docx',perPage=6,columns=2,layout='cards'}={}){
- perPage=Number(perPage);columns=Number(columns);
- if(!['docx','pptx'].includes(type)||!['cards','table'].includes(layout))throw Error('Choose a document type and layout.');
- if(!Number.isInteger(perPage)||perPage<1||perPage>12||!Number.isInteger(columns)||columns<1||columns>3||columns>perPage)throw Error('Use 1–12 images per page and 1–3 columns, no more columns than images.');
- if(Math.ceil(perPage/columns)>4)throw Error('Use at most four rows per page. Increase columns or reduce images per page.');
+export function exportPlan(items,{type='docx',imageSize='medium',columns=2,layout='cards',showDescription=true,showCategory=false}={}){
+ columns=Number(columns);
+ if(!['docx','pptx'].includes(type)||!['cards','table'].includes(layout)||!['small','medium','big'].includes(imageSize))throw Error('Choose a document type, image size, and layout.');
+ if(!Number.isInteger(columns)||columns<1||columns>4)throw Error('Choose 1–4 columns.');
+ const rows={small:4,medium:3,big:2}[imageSize],perPage=rows*columns;
  const pages=[];
  for(const category of CATEGORIES){
   const group=items.filter(item=>item.state==='done'&&item.category===category);
@@ -11,5 +11,5 @@ export function exportPlan(items,{type='docx',perPage=6,columns=2,layout='cards'
  }
  if(!pages.length)throw Error('Categorize at least one photo before exporting.');
  if(pages.some(page=>page.items.some(item=>!item.image)))throw Error('An image is unavailable. Categorize that photo again before exporting.');
- return {type,perPage,columns,layout,rows:Math.ceil(perPage/columns),pages};
+ return {type,perPage,columns,layout,imageSize,showDescription,showCategory,rows,pages};
 }

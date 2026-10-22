@@ -22,6 +22,9 @@ let installed=[],activeItem=null,precision=null,cloudEnabled=false,cloudControll
 const isCloud=()=>selectedModel===CLOUD_MODEL;
 const batchModel=key=>key===CLOUD_MODEL?CLOUD_INFO:getModel(key);
 const canRun=()=>isCloud()?cloudEnabled&&$('cloud-consent').checked:supported&&installed.includes(selectedModel);
+$('show-photo-details').checked=readSetting('lens-photo-details','false')==='true';
+$('show-photo-details').onchange=()=>{saveSetting('lens-photo-details',String($('show-photo-details').checked));render();};
+$('export-type').onchange=()=>{const word=$('export-type').value==='docx';$('export-icon-letter').textContent=word?'W':'P';$('export-document').setAttribute('aria-label',word?'Create Word document':'Create PowerPoint document');$('export-document').title=word?'Create Word document':'Create PowerPoint document';};
 $('auto-categorize').checked=readSetting('lens-auto-categorize','true')==='true';
 $('auto-categorize').onchange=()=>{saveSetting('lens-auto-categorize',String($('auto-categorize').checked));render();};
 $('cloud-consent').checked=readSetting('lens-consent','true')==='true';
@@ -61,15 +64,16 @@ function render(){
   if(!members.length){const empty=document.createElement('p');empty.className='small';empty.textContent='Photos in this category will appear here.';grid.append(empty);}
   for(const item of members){
    const card=document.createElement('article');card.className='photo-card';
+   const label=document.createElement('label');label.className='category-title';const select=document.createElement('select');select.disabled=busy;select.setAttribute('aria-label','Image category');
+   for(const value of ['',...CATEGORIES]){const option=document.createElement('option');option.value=value;option.textContent=value||'Choose category';select.append(option);}select.value=item.category||'';
+   select.onchange=()=>{if(!select.value)return;item.category=select.value;item.state='done';item.error='';render();};label.append(select);card.append(label);
    if(item.thumbnail){const img=document.createElement('img');img.src=item.thumbnail;img.alt=item.description||'Selected photo';img.loading='lazy';card.append(img);}
-   const state=document.createElement('p');state.className='small';state.textContent=item.state==='processing'?'Looking closely…':item.error||(item.state==='pending'?'Waiting':item.category);card.append(state);
+   const state=document.createElement('p');state.className='small';state.textContent=item.state==='processing'?'Looking closely…':item.error||(item.state==='pending'?'Waiting':item.category);if(item.state!=='done')card.append(state);
    if(item.description){const description=document.createElement('p');description.className='card-description';description.textContent=item.description;card.append(description);}
    const details=document.createElement('details');details.className='card-details';const detailTitle=document.createElement('summary');detailTitle.textContent='Details';details.append(detailTitle);
    appendPhotoDetails(details,item,item.model?batchModel(item.model).label:'unknown',item.model===CLOUD_MODEL);
-   card.append(details);
-   const label=document.createElement('label');label.textContent='Category';const select=document.createElement('select');select.disabled=busy;
-   for(const value of ['',...CATEGORIES]){const option=document.createElement('option');option.value=value;option.textContent=value||'Choose category';select.append(option);}select.value=item.category||'';
-   select.onchange=()=>{if(!select.value)return;item.category=select.value;item.state='done';item.error='';render();};label.append(select);card.append(label);grid.append(card);
+   details.hidden=!$('show-photo-details').checked;card.append(details);grid.append(card);
+
   }
   $('groups').append(section);
  }
@@ -161,7 +165,7 @@ $('export-document').onclick=async()=>{
  exporting=true;render();$('export-status').textContent='Creating document…';$('export-save').hidden=true;
  try{
   const type=$('export-type').value;
-  const options={type,perPage:$('export-count').value,columns:$('export-columns').value,layout:$('export-layout').value};
+  const options={type,imageSize:$('export-size').value,columns:$('export-columns').value,layout:$('export-layout').value,showDescription:$('export-description').checked,showCategory:$('export-category').checked};
   const {createDocument}=await import('./export-document.js');
   const blob=await createDocument(items,options);
   if(exportURL)URL.revokeObjectURL(exportURL);
