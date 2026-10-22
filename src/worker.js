@@ -1,5 +1,6 @@
 import { AutoProcessor, AutoTokenizer, AutoModelForVision2Seq, Florence2ForConditionalGeneration, Moondream1ForConditionalGeneration, RawImage, TextStreamer, env } from '@huggingface/transformers';
 import { installModelDownloads } from './downloads.js';
+import { recordModel } from './model-storage.js';
 import { getModel } from './models.js';
 import { florenceTask, modelDtypes, prepareInputs, decodeResult } from './inference.js';
 env.allowLocalModels=false;
@@ -18,15 +19,17 @@ self.onmessage=async ({data})=>{
   if(!adapter)throw new Error('No compatible WebGPU adapter. Try an updated Chrome on Android or Safari on iOS 26+.');
   if(!model){
    send('loading');
-   const progress_callback=p=>send('progress',{progress:p});
-   await installModelDownloads(selected,p=>progress_callback({...p,transfer:true}));
-   processor=await AutoProcessor.from_pretrained(selected.id,{progress_callback,revision:selected.revision});
+   const files=new Set();
+   const progress_callback=p=>{if(p.status==='done'&&!p.transfer)files.add(p.file);send('progress',{progress:p});};
+   if(!data.cachedOnly)await installModelDownloads(selected,p=>progress_callback({...p,transfer:true}));
+   processor=await AutoProcessor.from_pretrained(selected.id,{progress_callback,local_files_only:!!data.cachedOnly,revision:selected.revision});
    const fp16=adapter.features.has('shader-f16');
-   tokenizer=selected.family==='moondream'?await AutoTokenizer.from_pretrained(selected.id,{progress_callback,revision:selected.revision}):processor.tokenizer;
+   tokenizer=selected.family==='moondream'?await AutoTokenizer.from_pretrained(selected.id,{progress_callback,local_files_only:!!data.cachedOnly,revision:selected.revision}):processor.tokenizer;
    const Model=selected.family==='florence'?Florence2ForConditionalGeneration:selected.family==='moondream'?Moondream1ForConditionalGeneration:AutoModelForVision2Seq;
    model=await Model.from_pretrained(selected.id,{
-    revision:selected.revision,device:'webgpu',dtype:modelDtypes(selected.family,fp16),progress_callback,
+    local_files_only:!!data.cachedOnly,revision:selected.revision,device:'webgpu',dtype:modelDtypes(selected.family,fp16),progress_callback,
    });
+   if(!data.cachedOnly)await recordModel(data.model,fp16,files);
   }
   modelKey=data.model;
   send('ready');

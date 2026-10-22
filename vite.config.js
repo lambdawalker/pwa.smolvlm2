@@ -4,7 +4,7 @@ export default defineConfig({
   base: process.env.BASE_PATH || '/',
   server: { proxy: { '/api': 'http://127.0.0.1:8080' } },
   worker: { format: 'es' },
-  build: { rollupOptions: { input: { main: 'index.html', describe: 'describe.html' } } },
+  build: { rollupOptions: { input: { main: 'index.html', describe: 'describe.html', models: 'models.html' } } },
   plugins: [VitePWA({
     registerType: 'prompt',
     includeAssets: ['icons/*.png', 'ort/*'],
@@ -18,7 +18,7 @@ export default defineConfig({
     workbox: {
       globPatterns: ['**/*.{js,css,html,png,svg,wasm,mjs}'],
       maximumFileSizeToCacheInBytes: 80 * 1024 * 1024,
-      navigateFallbackDenylist: [/\/describe\.html$/, /\/ort\//, /\/api(?:\/|$)/],
+      navigateFallbackDenylist: [/\/(?:describe|models)\.html$/, /\/ort\//, /\/api(?:\/|$)/],
     },
   })],
 });

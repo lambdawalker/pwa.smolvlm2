@@ -4,16 +4,16 @@
 <body>
 <header><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">◉</span> little lens<span class="beta">LOCAL AI</span></a><button id="install" class="quiet" hidden>Install app ↗</button></header>
 <main>
-<nav class="page-nav"><a href="./">Categorize photos</a><a href="./describe.html" aria-current="page">Describe a photo</a></nav>
+<nav class="page-nav"><a href="./">Categorize photos</a><a href="./describe.html" aria-current="page">Describe a photo</a><a href="./models.html">Download models</a></nav>
 <section class="intro"><p class="eyebrow">A LITTLE MODEL. A NEW PERSPECTIVE.</p><h1>Every photo<br>has a <em>story.</em></h1><p class="lede">Choose a moment from your gallery.<br>Let a little AI put it into words.</p><p class="privacy"><span aria-hidden="true">◈</span> Your photos stay on this device.</p></section>
 <section id="setup" class="setup" aria-labelledby="setup-title">
 <p class="eyebrow">LET’S GET READY</p><h2 id="setup-title">A little setup. Then your photos.</h2>
-<label for="model-select">Choose your model</label>
-<select id="model-select"><option value="256m">SmolVLM2 · 256M — lighter</option><option value="500m">SmolVLM2 · 500M — larger</option><option value="smolvlm-500m">SmolVLM · 500M (original)</option><option value="florence">Florence-2 Base · 230M</option><option value="moondream">Moondream2 — large download</option></select>
+<p id="no-models" hidden>No downloaded models. <a href="./models.html">Download a model</a> to begin.</p><label for="model-select">Choose a downloaded model</label>
+<select id="model-select"></select>
 <p id="model-details" class="small"></p>
-<ol class="setup-steps"><li id="step-browser">Check browser compatibility</li><li id="step-model">Download and prepare your selected model</li><li>Choose a photo and describe it</li></ol>
-<p class="small">Choose a model, then tap Download model. Wi-Fi recommended; keep this page open. Your choice is remembered and loaded automatically on later visits. Cached files are reused when available.</p>
-<button id="load-model" class="primary" disabled>Download model</button>
+<ol class="setup-steps"><li id="step-browser">Check browser compatibility</li><li id="step-model">Load your downloaded model</li><li>Choose a photo and describe it</li></ol>
+<p class="small">Choose a downloaded model to load it into memory. <a href="./models.html">Manage downloads</a>. Your choice is remembered.</p>
+<button id="load-model" class="primary" disabled>Load model</button>
 <button id="continue" class="primary" hidden>Continue to photos →</button>
 </section>
 <div id="activity" aria-busy="true"><span id="spinner" class="spinner" aria-hidden="true"></span><p id="status" role="status" aria-live="polite">Checking this browser…</p>

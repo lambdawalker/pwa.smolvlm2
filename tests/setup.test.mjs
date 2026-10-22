@@ -11,13 +11,13 @@ const originalSource=readFileSync(new URL('../src/main.js',import.meta.url),'utf
 function prepareSource(source){return source
  .replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replaceAll('import.meta.url',"'https://example.test/src/main.js'");
 }
-async function app(supported=true,lineEnding='\n',savedModel='256m'){
+async function app(supported=true,lineEnding='\n',savedModel='256m',installed=Object.keys(MODELS)){
  const storage=new Map(savedModel?[['little-lens-model',savedModel]]:[]);
  const source=prepareSource(originalSource.replace(/\r?\n/g,lineEnding));
- const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,{hidden:false,disabled:false,textContent:'',value:'',setAttribute(){},removeAttribute(){},focus(){}}]));
+ const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,{hidden:false,disabled:false,textContent:'',value:'',setAttribute(){},removeAttribute(){},focus(){},append(){},replaceChildren(){}}]));
  const workers=[];
  class Worker{constructor(){workers.push(this);}postMessage(data){this.last=data;}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],`Missing element ${id}`);return elements[id];}},Worker,URL,MODELS,DEFAULT_MODEL,getModel,resolvePrompt,florenceTask,preparePhoto:async()=>({url:'data:image/png;base64,test',width:1,height:1}),localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{},friendlyError:x=>x,caches:{delete:async()=>true}});
+ vm.runInNewContext(source,{createDownloadView:()=>({reset(){},update(){}}),availableModels:async()=>installed,document:{createElement:()=>({}),getElementById:id=>{assert.ok(elements[id],`Missing element ${id}`);return elements[id];}},Worker,URL,MODELS,DEFAULT_MODEL,getModel,resolvePrompt,florenceTask,preparePhoto:async()=>({url:'data:image/png;base64,test',width:1,height:1}),localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{},friendlyError:x=>x,caches:{delete:async()=>true}});
  await new Promise(resolve=>setImmediate(resolve));
  return {elements,workers};
 }
@@ -72,4 +72,8 @@ test('Florence exposes fixed tasks and sends a task instead of a chat prompt',as
  await e.photo.onchange({target:{files:[{}],value:''}});
  e['florence-task'].value='ocr';await e.describe.onclick();
  assert.equal(w[0].last.task,'ocr');assert.equal(w[0].last.prompt,undefined);
+});
+
+test('description page hides unavailable models and cannot load an empty cache',async()=>{
+ const {elements:e,workers:w}=await app(true,'\n','256m',[]);assert.equal(e['no-models'].hidden,false);assert.equal(e['load-model'].disabled,true);e['load-model'].onclick();assert.equal(w.length,0);
 });
