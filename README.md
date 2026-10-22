@@ -24,9 +24,9 @@ For another static host, `npm run build` uses `/` by default. Set `BASE_PATH=/yo
 
 ## Experience
 
-1. Choose one photo (gallery picker; no forced camera capture).
-2. Pick a description style and tap **Describe photo**.
-3. First use downloads model files, with per-file progress. Typical model assets are approximately 321 MB with shader-f16 or 575 MB without it, plus runtime/configuration overhead; reserve roughly 350–650 MB. This is ONNX, not the earlier SmolVLM TFLite conversion.
+1. Open the app. Setup checks WebGPU and automatically downloads or restores the model, with a spinner and per-file progress. Reserve roughly 350–650 MB; Wi-Fi recommended.
+2. Once the model is ready, tap **Continue to photos** and choose one photo (gallery picker; no forced camera capture).
+3. Pick a description style and tap **Describe photo**.
 4. Descriptions stream into the page. Cancel terminates the worker immediately, releasing its model; completed cached files are reused on retry.
 5. Copy the result, change the photo, or remove it from the page.
 
@@ -78,3 +78,7 @@ Build/unit checks do not prove model inference or performance on a phone.
 ## Attribution
 
 SmolVLM2 by Hugging Face: https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct (Apache-2.0 model license). Transformers.js: https://github.com/huggingface/transformers.js (Apache-2.0). Model weights are downloaded from Hugging Face, not committed here. Dependencies retain their own licenses.
+
+### Guided model setup
+
+On opening the app, a setup screen checks WebGPU and automatically downloads or restores SmolVLM2. An immediate spinner covers worker startup; per-file progress appears as downloads arrive and the spinner remains visible during model preparation. Keep the page open (Wi-Fi recommended). Cancel stops the worker; Retry reuses completed cached files. Once the model is ready, Continue opens the photo workspace. Deleting the model returns to setup.

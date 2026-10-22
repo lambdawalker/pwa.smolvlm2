@@ -5,17 +5,24 @@
 <header><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">◉</span> little lens<span class="beta">LOCAL AI</span></a><button id="install" class="quiet" hidden>Install app ↗</button></header>
 <main>
 <section class="intro"><p class="eyebrow">A LITTLE MODEL. A NEW PERSPECTIVE.</p><h1>Every photo<br>has a <em>story.</em></h1><p class="lede">Choose a moment from your gallery.<br>Let a little AI put it into words.</p><p class="privacy"><span aria-hidden="true">◈</span> Your photos stay on this device.</p></section>
-<section class="workspace" aria-label="Photo description">
+<section id="setup" class="setup" aria-labelledby="setup-title">
+<p class="eyebrow">LET’S GET READY</p><h2 id="setup-title">A little setup. Then your photos.</h2>
+<ol class="setup-steps"><li id="step-browser">Check browser compatibility</li><li id="step-model">Download and prepare SmolVLM2</li><li>Choose a photo and describe it</li></ol>
+<p class="small">The model starts downloading automatically: roughly 350–650 MB. Wi-Fi recommended. Keep this page open. Saved model files are reused on later visits when available.</p>
+<button id="load-model" class="primary" disabled>Download model</button>
+<button id="continue" class="primary" hidden>Continue to photos →</button>
+</section>
+<div id="activity" aria-busy="true"><span id="spinner" class="spinner" aria-hidden="true"></span><p id="status" role="status" aria-live="polite">Checking this browser…</p>
+<div id="progress-area" hidden><progress id="progress" max="100" aria-label="Current model file download"></progress><p id="progress-label" class="small"></p></div>
+<button id="cancel" class="quiet" hidden>Cancel</button></div>
+<section id="workspace" hidden class="workspace" aria-label="Photo description">
 <div class="photo-panel"><div class="panel-top"><span>01 / YOUR PHOTO</span><span id="photo-meta">One moment at a time</span></div>
 <div id="empty" class="empty"><div class="photo-art" aria-hidden="true"><span>✦</span><svg viewBox="0 0 180 130"><rect x="16" y="10" width="148" height="110" rx="10"/><circle cx="120" cy="42" r="13"/><path d="M16 99 62 52 104 95 126 74 164 110"/></svg></div><h2>A fresh pair of eyes.</h2><p>Landscapes, everyday objects, little details.<br>What will you discover?</p></div>
 <img id="preview" alt="Selected photo to describe" hidden>
 <div class="photo-actions"><button id="pick" class="primary">＋ Choose a photo</button><button id="remove" class="quiet" hidden>Remove</button><input id="photo" type="file" accept="image/*" hidden></div><p class="small">JPEG, PNG, WebP, or any image your browser can open.</p></div>
 <div class="description-panel"><div class="panel-top"><span>02 / A NEW PERSPECTIVE</span><span class="dot" aria-hidden="true"></span></div><h2>Put it into words.</h2><label for="style">Description style</label><select id="style"><option value="brief">Short & simple</option><option value="detail">A closer look</option><option value="alt">Alt text</option></select>
 <div class="model-note"><strong>Small model. All yours.</strong><p>SmolVLM2 · 256M parameters<br>First use downloads roughly 350–650 MB. Wi-Fi recommended. Model files are cached when browser storage allows.</p></div>
-<button id="describe" class="primary" disabled>Describe photo <span aria-hidden="true">↗</span></button><button id="cancel" class="quiet" hidden>Cancel</button>
-<div id="progress-area" hidden><progress id="progress" max="100" aria-label="Model file download"></progress><p id="progress-label" class="small"></p></div>
-<p id="status" role="status" aria-live="polite">Checking this browser…</p>
-<div id="result-box" hidden><p class="eyebrow">THE DESCRIPTION</p><p id="result"></p><div class="result-actions"><button id="copy" class="quiet">Copy text</button><span id="timing" class="small"></span></div><p class="small">AI can miss details or make mistakes. Check the description against your photo.</p></div>
+<button id="describe" class="primary" disabled>Describe photo <span aria-hidden="true">↗</span></button><div id="result-box" hidden><p class="eyebrow">THE DESCRIPTION</p><p id="result"></p><div class="result-actions"><button id="copy" class="quiet">Copy text</button><span id="timing" class="small"></span></div><p class="small">AI can miss details or make mistakes. Check the description against your photo.</p></div>
 </div></section>
 <details class="about"><summary>Made for your phone. Designed for your privacy.</summary><p>Photos are resized locally and never uploaded. Model files download from Hugging Face. No account, analytics, or API key. Descriptions are in English.</p><p>Requires WebGPU: a compatible Android browser or Safari on iOS 26+. Older devices may run out of memory. Keep this app open while it works.</p><p>For offline use, finish a description online first so all model files are cached. Browser storage can be cleared or evicted; offline access is not guaranteed. On iPhone, use Share → Add to Home Screen to install.</p><button id="clear" class="quiet">Delete downloaded model</button></details>
 <div id="update" class="update" hidden>New version available. <button id="reload" class="quiet">Reload app</button></div>

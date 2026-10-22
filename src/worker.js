@@ -7,7 +7,7 @@ env.backends.onnx.wasm.numThreads=1;
 env.backends.onnx.wasm.wasmPaths=new URL(`${import.meta.env.BASE_URL}ort/`,self.location.origin).href;
 let processor, model, busy=false;
 self.onmessage=async ({data})=>{
- if(data.type!=='describe'||busy)return;
+ if(!['load','describe'].includes(data.type)||busy)return;
  busy=true;
  const send=(type,extra={})=>self.postMessage({type,...extra});
  try{
@@ -23,6 +23,7 @@ self.onmessage=async ({data})=>{
    });
   }
   send('ready');
+  if(data.type==='load')return;
   const image=await RawImage.fromURL(data.image);
   const messages=[{role:'user',content:[{type:'image'},{type:'text',text:data.prompt}]}];
   const text=processor.apply_chat_template(messages,{add_generation_prompt:true});
