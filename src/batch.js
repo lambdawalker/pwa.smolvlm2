@@ -29,14 +29,14 @@ $('auto-categorize').checked=readSetting('lens-auto-categorize','true')==='true'
 $('auto-categorize').onchange=()=>{saveSetting('lens-auto-categorize',String($('auto-categorize').checked));render();};
 $('cloud-consent').checked=readSetting('lens-consent','true')==='true';
 $('cloud-consent').onchange=()=>{saveSetting('lens-consent',String($('cloud-consent').checked));render();};
-function showSection(){const settings=window.location?.hash==='#settings';$('settings-page').hidden=!settings;$('categorize-page').hidden=settings;document.querySelector?.('.hamburger')?.removeAttribute('open');}
+function showSection(){const settings=window.location?.hash==='#settings';$('section-title').textContent=settings?'Settings':'Categorize';$('settings-page').hidden=!settings;$('categorize-page').hidden=settings;document.querySelector?.('.hamburger')?.removeAttribute('open');}
 window.addEventListener('hashchange',showSection);showSection();
 function setView(view){$('groups').className='category-groups '+(view==='list'?'list-view':'');$('grid-view').setAttribute('aria-pressed',String(view!=='list'));$('list-view').setAttribute('aria-pressed',String(view==='list'));saveSetting('lens-view',view);}
 $('grid-view').onclick=()=>setView('grid');$('list-view').onclick=()=>setView('list');setView(readSetting('lens-view','grid'));
 $('category-prompt').value=readSetting('lens-category-prompt',CATEGORY_PROMPT);
 $('category-prompt').onchange=()=>saveSetting('lens-category-prompt',$('category-prompt').value);
 $('reset-prompt').onclick=()=>{if(!running){$('category-prompt').value=CATEGORY_PROMPT;saveSetting('lens-category-prompt',CATEGORY_PROMPT);}};
-function modelDetails(){const model=batchModel(selectedModel);$('batch-model-details').textContent=`${model.download}. ${model.hint}`;$('cloud-notice').hidden=!isCloud();$('privacy-label').textContent=isCloud()?'Cloud mode: selected photos are sent to Google.':'Your photos stay on this device.';$('precision-label').textContent=isCloud()?CLOUD_PRECISION:precisionLabel(precision);}
+function modelDetails(){const model=batchModel(selectedModel);$('batch-model-details').textContent=`${model.download}. ${model.hint}`;$('cloud-notice').hidden=!isCloud();$('precision-label').textContent=isCloud()?CLOUD_PRECISION:precisionLabel(precision);}
 modelDetails();
 $('batch-model').onchange=()=>{
  const next=$('batch-model').value;
@@ -45,7 +45,8 @@ $('batch-model').onchange=()=>{
  stopWorker();precision=null;$('precision-label').textContent=precisionLabel(null);selectedModel=next;saveSetting('lens-model',next);downloads.reset();$('download').hidden=true;modelDetails();render();status(`${batchModel(selectedModel).label} selected. Completed categories are kept. Tap Categorize photos to continue.`);
 };
 const monitor=watchOperation(stage=>{logEvent('operation-slow',{stage});status(`Still waiting: ${stage}. You can stop and copy the troubleshooting report below.`);},stage=>{logEvent('operation-timeout',{stage});const p=pending;pending=null;stopWorker();p?.reject(new Error(`No progress for 3 minutes during ${stage}. Retry or copy the troubleshooting report.`));});
-const status=text=>{$('status').textContent=text;};
+const status=(text,visible=false)=>{$('status').textContent=text;$('status').hidden=!visible;};
+$('attention-count').onclick=()=>document.getElementById('needs-attention')?.scrollIntoView({behavior:'smooth',block:'start'});
 function render(){
  const busy=running||exporting;
  $('export-document').disabled=exporting||busy||!items.some(item=>item.state==='done');
@@ -53,13 +54,16 @@ function render(){
  $('pick').disabled=busy;$('clear').disabled=busy||!items.length;$('start').disabled=exporting||(!running&&(!canRun()||!items.some(i=>i.state==='pending')));$('start').textContent=running?'Stop':'Categorize';$('auto-categorize').disabled=busy;
  $('cancel').hidden=true;$('spinner').hidden=!busy;$('retry').hidden=busy||!items.some(i=>i.state==='error');$('reload').disabled=busy;
  const finished=items.filter(i=>['done','review','error'].includes(i.state)).length;
- $('summary').textContent=items.length?`${finished} of ${items.length} processed · ${items.filter(i=>i.state==='done').length} categorized · ${items.filter(i=>['review','error'].includes(i.state)).length} need attention`:'No photos selected.';
+ const attention=items.filter(i=>['review','error'].includes(i.state)).length;
+ $('summary').textContent=`${finished} of ${items.length} processed | ${items.filter(i=>i.state==='done').length} categorized | `;
+ $('attention-count').textContent=`${attention} need attention`;$('attention-count').disabled=attention===0;$('attention-count').className='attention-count'+(attention?' has-attention':'');
+
  $('batch-progress').hidden=!items.length;$('batch-progress').max=items.length||1;$('batch-progress').value=finished;
  $('groups').replaceChildren();
  for(const category of [...CATEGORIES,'Needs attention','Waiting']){
   const members=items.filter(i=>category==='Waiting'?['pending','processing'].includes(i.state):category==='Needs attention'?['error','review'].includes(i.state):i.category===category&&i.state==='done');
   if(!members.length)continue;
-  const section=document.createElement('section');section.className='category-group';const title=document.createElement('h2');title.textContent=`${category} · ${members.length}`;section.append(title);
+  const section=document.createElement('section');section.className='category-group';if(category==='Needs attention')section.id='needs-attention';const title=document.createElement('h2');title.textContent=`${category} · ${members.length}`;section.append(title);
   const grid=document.createElement('div');grid.className='photo-grid';section.append(grid);
   if(!members.length){const empty=document.createElement('p');empty.className='small';empty.textContent='Photos in this category will appear here.';grid.append(empty);}
   for(const item of members){
@@ -110,11 +114,11 @@ async function thumbnail(photo){
  const img=new Image();img.src=photo.url;await img.decode();const canvas=document.createElement('canvas');const scale=Math.min(1,180/photo.width,180/photo.height);canvas.width=Math.max(1,Math.round(photo.width*scale));canvas.height=Math.max(1,Math.round(photo.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.7);
 }
 $('pick').onclick=()=>$('photos').click();
-$('photos').onchange=event=>{for(const file of event.target.files||[])items.push({file,state:'pending',category:null});event.target.value='';render();if($('auto-categorize').checked&&canRun())$('start').click();else if(!canRun())status('Check your model and consent in Settings.');else status('Ready. Tap Categorize to start.');};
+$('photos').onchange=event=>{for(const file of event.target.files||[])items.push({file,state:'pending',category:null});event.target.value='';render();if($('auto-categorize').checked&&canRun())$('start').click();else if(!canRun())status('Check your model and consent in Settings.',true);else status('Ready. Tap Categorize to start.');};
 $('start').onclick=async()=>{
  if(running){cancelled=true;stopWorker();status('Stopping…');return;}
  if(exporting||!canRun())return;
- let prompt;try{prompt=resolvePrompt('custom',$('category-prompt').value);}catch(error){status(error.message);return;}
+ let prompt;try{prompt=resolvePrompt('custom',$('category-prompt').value);}catch(error){status(error.message,true);return;}
  running=true;cancelled=false;batchPause='';downloads.reset();render();status(isCloud()?'Preparing cloud categorization…':`Preparing ${batchModel(selectedModel).label}. Loading saved files into memory…`);
  navigator.storage?.persist?.().catch(()=>{});
  try{
@@ -142,8 +146,8 @@ $('start').onclick=async()=>{
    }finally{clearTimeout(timeout);if(cloudController===controller)cloudController=null;}
 
   },render,()=>cancelled);
-  status(batchPause|| (cancelled?'Stopped. Your completed categories are kept. Continue when ready.':'Finished. Review your categories below.'));
- }catch(error){status(cancelled?'Stopped. Continue when ready.':friendlyError(error.message));}
+  status(batchPause|| (cancelled?'Stopped. Your completed categories are kept. Continue when ready.':'Finished. Review your categories below.'),!!batchPause);
+ }catch(error){status(cancelled?'Stopped. Continue when ready.':friendlyError(error.message),!cancelled);}
  finally{activeItem=null;running=false;$('download').hidden=true;render();}
 };
 $('cancel').onclick=()=>{cancelled=true;stopWorker();status('Stopping…');};

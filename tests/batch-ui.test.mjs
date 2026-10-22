@@ -25,7 +25,7 @@ test('main page uses 256M, sends images serially and resumes after stop',async()
  e.cancel.onclick();await first;assert.equal(w[0].stopped,true);assert.match(e.summary.textContent,/1 of 2 processed/);
  w[0].onmessage({data:{type:'complete',text:'{"category":"Documents","description":"A scene."}'}});assert.match(e.summary.textContent,/1 of 2 processed/);
  const second=e.start.onclick();w[1].onmessage({data:{type:'ready'}});await tick();w[1].onmessage({data:{type:'complete',text:'{"category":"Computer screens","description":"A scene."}'}});await second;
- assert.match(e.summary.textContent,/2 of 2 processed · 2 categorized/);assert.equal(e.start.disabled,true);assert.equal(e.pick.disabled,false);
+ assert.match(e.summary.textContent,/2 of 2 processed \| 2 categorized/);assert.equal(e.start.disabled,true);assert.equal(e.pick.disabled,false);
 });
 test('unsupported browser never starts model download',async()=>{
  const {e,w}=await app(false);e.photos.onchange({target:{files:[{name:'a.jpg'}]}});assert.equal(e.start.disabled,true);await e.start.onclick();assert.equal(w.length,0);
@@ -60,7 +60,7 @@ test('cloud works without WebGPU or downloads, requires consent and preserves ra
  assert.equal(e['batch-model'].value,CLOUD_MODEL);e.photos.onchange({target:{files:[{name:'a.jpg'}]}});
  assert.equal(e['cloud-consent'].checked,true);e['cloud-consent'].checked=false;e['cloud-consent'].onchange();await e.start.onclick();assert.equal(calls,0);assert.equal(e.start.disabled,true);
  e['cloud-consent'].checked=true;e['cloud-consent'].onchange();assert.equal(e.start.disabled,false);
- await e.start.onclick();assert.equal(calls,1);assert.equal(w.length,0);assert.match(e.summary.textContent,/1 of 1 processed · 1 categorized/);
+ await e.start.onclick();assert.equal(calls,1);assert.equal(w.length,0);assert.match(e.summary.textContent,/1 of 1 processed \| 1 categorized/);
 });
 test('cloud quota failure pauses batch and keeps remaining photos pending',async()=>{
  let calls=0;const {e}=await app(false,[],true,async()=>{calls++;const error=new Error('Free quota reached');error.status=429;throw error;});
@@ -87,4 +87,11 @@ test('automatic mode starts on selection and the same button stops processing',a
  assert.equal(w.length,1);assert.equal(e.start.textContent,'Stop');assert.equal(e.start.disabled,false);
  assert.equal(e['batch-progress'].max,2);assert.equal(e['batch-progress'].value,0);
  await e.start.onclick();await tick();assert.equal(w[0].stopped,true);assert.equal(e.start.textContent,'Categorize');
+});
+
+test('attention count highlights failures and identifies the scroll target',async()=>{
+ const {e,w}=await app();
+ assert.equal(e['attention-count'].disabled,true);assert.equal(e.status.hidden,true);
+ e.photos.onchange({target:{files:[{name:'a.jpg'}]}});const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();w[0].onmessage({data:{type:'complete',text:'uncertain'}});await run;
+ assert.equal(e['attention-count'].textContent,'1 need attention');assert.equal(e['attention-count'].disabled,false);assert.match(e['attention-count'].className,/has-attention/);assert.ok(e.groups.children.some(group=>group.id==='needs-attention'));
 });
