@@ -1,6 +1,6 @@
 # Little Lens · SmolVLM2 PWA
 
-A mobile-first, installable photo describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with SmolVLM2 256M or 500M. No server inference, uploads, account, analytics, or API key.
+A mobile-first, installable photo describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with a choice of five vision models. No server inference, uploads, account, analytics, or API key.
 
 ## Run
 
@@ -53,7 +53,7 @@ On Android, use the install button when offered or the browser menu. On iPhone, 
 - Transformers.js 3.8.1 with `AutoModelForVision2Seq` and `AutoProcessor`.
 - Dedicated module worker; WebGPU fp16 vision/embeddings + q4f16 decoder when available, otherwise fp32 vision/embeddings + q4 decoder.
 - ONNX Runtime WASM/module files copied from the locked dependency at build time, served from the same origin.
-- Both model revisions are pinned in `src/models.js` for reproducible downloads.
+- All model revisions are pinned in `src/models.js` for reproducible downloads.
 
 ## Validation
 
@@ -81,7 +81,7 @@ SmolVLM2 by Hugging Face: https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Vid
 
 ### Guided model setup
 
-On first visit, a setup screen checks WebGPU and lets you select the 256M or 500M model before downloading. The choice is remembered; later visits automatically load it. An immediate spinner covers worker startup; per-file progress appears as downloads arrive and the spinner remains visible during model preparation. Keep the page open (Wi-Fi recommended). Cancel stops the worker; Retry reuses completed cached files. Once the model is ready, Continue opens the photo workspace. Change model returns to setup and keeps your photo. Switching releases the previous worker before loading the new model; completed files for both can remain cached. Delete all downloaded models clears both caches and returns to setup.
+On first visit, a setup screen checks WebGPU and lets you select a model before downloading. The choice is remembered; later visits automatically load it. An immediate spinner covers worker startup; per-file progress appears as downloads arrive and the spinner remains visible during model preparation. Keep the page open (Wi-Fi recommended). Cancel stops the worker; Retry reuses completed cached files. Once the model is ready, Continue opens the photo workspace. Change model returns to setup and keeps your photo. Switching releases the previous worker before loading the new model; completed files for each model can remain cached. Delete all downloaded models clears all model files in the Transformers.js cache and returns to setup.
 
 ## AWS deployment (Go + Pulumi)
 
@@ -90,3 +90,19 @@ See [the AWS deployment guide](docs/aws-deployment.md) for Windows-friendly setu
 Deploy to **audit.apexfission.com** using `.\deploy.bat` on Windows or `sh ./deploy.sh` on Linux/macOS. The Go wizard guides AWS/Pulumi authentication, Cloudflare DNS setup, builds, preview, and deployment confirmation. See the deployment guide for prerequisites and the scoped Cloudflare API token.
 
 The wizard defaults to **S3-backed Pulumi state** with a private versioned bucket and AWS KMS secrets. It remembers non-secret setup in `.deploy/settings.json` and reuses the encrypted Cloudflare token. Subsequent runs skip setup questions; use `--configure` to review the saved defaults. The state bucket/key are prepared before the application preview and retained independently of the app.
+
+## Available vision models
+
+| Model | Approximate model download | Modes |
+| --- | --- | --- |
+| SmolVLM2 256M | 350–650 MB | Descriptions, custom prompts |
+| SmolVLM2 500M | 550–900 MB | Descriptions, custom prompts |
+| Original SmolVLM 500M | 550–900 MB | Descriptions, custom prompts |
+| Florence-2 Base 230M (fine-tuned) | 450–850 MB | Short/detailed captions, OCR, object detection |
+| Moondream2 (Xenova ONNX export) | 1.5–1.8 GB | Descriptions, custom prompts |
+
+Estimates include some overhead and vary with shader-f16 support; these are downloads, not RAM requirements. Moondream2 is substantially larger and may exhaust phone memory. This is the pinned Xenova conversion, not a promise of features from newer Moondream releases.
+
+Florence uses native task tokens and postprocessing instead of the chat prompt. Its outputs appear after generation (no token streaming); object detection displays JSON labels and bounding boxes in resized-photo pixel coordinates. Florence does not expose free-form chat prompts. Changing to a conversational model restores the description/custom-prompt controls.
+
+Each model has a pinned revision and family-specific loading, preprocessing, and decoding. `npm run test:model` checks real processor/tokenizer inputs for all five without downloading model weights. Full WebGPU inference and memory limits still require testing on target phones.
