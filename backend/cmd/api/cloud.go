@@ -8,6 +8,7 @@ import (
 	"image"
 	_ "image/jpeg"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -29,6 +30,22 @@ func apiJSON(code int, value any) events.APIGatewayV2HTTPResponse {
 }
 func cloudError(code int, message string) events.APIGatewayV2HTTPResponse {
 	return apiJSON(code, map[string]string{"error": message})
+}
+
+// Restrict provider metadata to known enums; never copy arbitrary upstream strings.
+func safeFinishReason(reason string) string {
+	switch reason {
+	case "", "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY", "OTHER":
+		return reason
+	default:
+		return "OTHER"
+	}
+}
+func cloudFailure(code int, message, kind string, upstream int, reason string) events.APIGatewayV2HTTPResponse {
+	details := map[string]any{"error": message, "code": kind, "providerStatus": upstream, "finishReason": safeFinishReason(reason)}
+	entry, _ := json.Marshal(map[string]any{"event": "cloud-provider-error", "code": kind, "providerStatus": upstream, "finishReason": safeFinishReason(reason)})
+	log.Print(string(entry))
+	return apiJSON(code, details)
 }
 func cloudRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	method := req.RequestContext.HTTP.Method
@@ -112,9 +129,12 @@ func cloudRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) events.
 		return cloudError(503, "Hosted Gemma is unavailable for this project. Check Google AI Studio model access.")
 	}
 	if response.StatusCode != 200 {
-		return cloudError(502, "Google could not process this photo. Retry later or choose an on-device model.")
+		return cloudFailure(502, "Google could not process this photo. Retry later or choose an on-device model.", "PROVIDER_HTTP_ERROR", response.StatusCode, "")
 	}
 	var result struct {
+		PromptFeedback struct {
+			BlockReason string `json:"blockReason"`
+		} `json:"promptFeedback"`
 		Candidates []struct {
 			Content struct {
 				Parts []struct {
@@ -125,12 +145,26 @@ func cloudRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) events.
 			FinishReason string `json:"finishReason"`
 		} `json:"candidates"`
 	}
-	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result) != nil || len(result.Candidates) == 0 {
-		return cloudError(502, "Google returned no usable answer. The image may have been blocked.")
+	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result) != nil {
+		return cloudFailure(502, "Google returned an invalid response. Retry later.", "INVALID_PROVIDER_RESPONSE", response.StatusCode, "")
+	}
+	if result.PromptFeedback.BlockReason != "" {
+		return cloudFailure(502, "Google blocked this request. Review this photo manually or use an on-device model.", "PROMPT_BLOCKED", response.StatusCode, result.PromptFeedback.BlockReason)
+	}
+	if len(result.Candidates) == 0 {
+		return cloudFailure(502, "Google returned no candidate answer. Retry later or review manually.", "NO_CANDIDATES", response.StatusCode, "")
 	}
 	candidate := result.Candidates[0]
 	if candidate.FinishReason != "STOP" {
-		return cloudError(502, "Google did not finish a usable answer. Retry or choose an on-device model.")
+		reason := safeFinishReason(candidate.FinishReason)
+		if reason == "MAX_TOKENS" {
+			return cloudFailure(502, "Gemma reached its output token limit before finishing. The partial answer was not accepted.", "OUTPUT_TRUNCATED", response.StatusCode, reason)
+		}
+		switch reason {
+		case "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY":
+			return cloudFailure(502, "Google blocked the answer. Review this photo manually or use an on-device model.", "OUTPUT_BLOCKED", response.StatusCode, reason)
+		}
+		return cloudFailure(502, "Google did not finish its answer. Retry later or use an on-device model.", "INCOMPLETE_OUTPUT", response.StatusCode, reason)
 	}
 	var answer strings.Builder
 	for _, part := range candidate.Content.Parts {
@@ -140,7 +174,7 @@ func cloudRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) events.
 	}
 	text := strings.TrimSpace(answer.String())
 	if text == "" {
-		return cloudError(502, "Google returned an empty answer.")
+		return cloudFailure(502, "Google returned an empty answer.", "EMPTY_OUTPUT", response.StatusCode, candidate.FinishReason)
 	}
 	return apiJSON(200, map[string]string{"text": text, "model": cloudModel, "precision": "Provider-managed (not disclosed)"})
 }

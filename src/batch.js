@@ -118,7 +118,7 @@ $('start').onclick=async()=>{
    logEvent('cloud-request',{model:'gemma-4-26b-a4b-it',index:items.indexOf(item),preparedHash:photo.info?.preparedHash,promptHash});
    try{const answer=await classifyCloud(photo.url,prompt,controller.signal);logEvent('cloud-complete',{index:items.indexOf(item)});return answer;}
    catch(error){
-    logEvent('cloud-error',{status:error.status||0,cancelled});
+    logEvent('cloud-error',{status:error.status||0,code:error.code,providerStatus:error.providerStatus,finishReason:error.finishReason,cancelled});
     if(!cancelled){batchPause=error.name==='AbortError'?'Cloud request timed out. Retry failed photos or continue later.':error.message;const failure=new Error(batchPause);failure.pauseBatch=true;throw failure;}
     throw error;
    }finally{clearTimeout(timeout);if(cloudController===controller)cloudController=null;}

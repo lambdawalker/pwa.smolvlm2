@@ -6,8 +6,8 @@ export async function cloudAvailable(){
 }
 export async function classifyCloud(image,prompt,signal){
  const response=await fetch('/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,prompt,consent:true}),signal});
- let result;try{result=await response.json();}catch{throw new Error('Cloud service returned an invalid response. Reload or retry later.');}
- if(!response.ok){const error=new Error(result.error||'Cloud classification failed. Retry later.');error.status=response.status;throw error;}
+ let result;try{result=await response.json();}catch{const error=new Error('Cloud service returned an invalid response. Reload or retry later.');error.status=response.status;error.code='INVALID_API_RESPONSE';throw error;}
+ if(!response.ok){const error=new Error(result.error||'Cloud classification failed. Retry later.');error.status=response.status;error.code=result.code;error.providerStatus=result.providerStatus;error.finishReason=result.finishReason;throw error;}
  if(typeof result.text!=='string'||!result.text.trim())throw new Error('Cloud model returned an empty answer.');
  return result.text;
 }

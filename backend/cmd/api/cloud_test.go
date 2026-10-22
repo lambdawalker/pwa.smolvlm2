@@ -90,3 +90,39 @@ func TestCloudProviderResponses(t *testing.T) {
 		}
 	}
 }
+
+func TestCloudFailureDiagnostics(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "private-key")
+	for _, tc := range []struct {
+		status             int
+		body, code, reason string
+	}{
+		{200, `{"candidates":[{"finishReason":"MAX_TOKENS"}]}`, "OUTPUT_TRUNCATED", "MAX_TOKENS"},
+		{200, `{"candidates":[{"finishReason":"SAFETY"}]}`, "OUTPUT_BLOCKED", "SAFETY"},
+		{200, `{"promptFeedback":{"blockReason":"SAFETY"}}`, "PROMPT_BLOCKED", "SAFETY"},
+		{200, `{"candidates":[]}`, "NO_CANDIDATES", ""},
+		{200, `not json`, "INVALID_PROVIDER_RESPONSE", ""},
+		{503, `{"error":"private-key"}`, "PROVIDER_HTTP_ERROR", ""},
+		{200, `{"candidates":[{"finishReason":"private-key"}]}`, "INCOMPLETE_OUTPUT", "OTHER"},
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(tc.body))
+		}))
+		previous := googleEndpoint
+		googleEndpoint = server.URL
+		got := cloudRoute(context.Background(), cloudRequest(true))
+		googleEndpoint = previous
+		server.Close()
+		var response struct {
+			Code, FinishReason string
+			ProviderStatus     int
+		}
+		if json.Unmarshal([]byte(got.Body), &response) != nil || response.Code != tc.code || response.FinishReason != tc.reason || response.ProviderStatus != tc.status {
+			t.Fatalf("unexpected diagnostics: %s", got.Body)
+		}
+		if strings.Contains(got.Body, "private-key") {
+			t.Fatal("unsafe diagnostic")
+		}
+	}
+}
