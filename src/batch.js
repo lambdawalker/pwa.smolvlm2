@@ -1,4 +1,6 @@
 import './style.css';
+import { logEvent,installDiagnostics,watchOperation } from './diagnostics.js';
+installDiagnostics();
 import { createDownloadView } from './download-view.js';
 import { registerSW } from 'virtual:pwa-register';
 import { preparePhoto } from './image.js';
@@ -21,6 +23,7 @@ $('batch-model').onchange=()=>{
  if(next===selectedModel)return;
  stopWorker();selectedModel=next;downloads.reset();$('download').hidden=true;modelDetails();render();status(`${getModel(selectedModel).label} selected. Completed categories are kept. Tap Categorize photos to continue.`);
 };
+const monitor=watchOperation(stage=>{logEvent('operation-slow',{stage});status(`Still waiting: ${stage}. You can stop and copy the troubleshooting report below.`);},stage=>{logEvent('operation-timeout',{stage});const p=pending;pending=null;stopWorker();p?.reject(new Error(`No progress for 3 minutes during ${stage}. Retry or copy the troubleshooting report.`));});
 const status=text=>{$('status').textContent=text;};
 function render(){
  $('batch-model').disabled=running||!installed.length;$('category-prompt').disabled=running;$('reset-prompt').disabled=running;
@@ -49,24 +52,30 @@ function render(){
   $('groups').append(section);
  }
 }
-function stopWorker(){worker?.terminate();worker=null;if(pending){pending.reject(new Error('Stopped'));pending=null;}}
+function stopWorker(){monitor.stop();logEvent('worker-stopped');worker?.terminate();worker=null;if(pending){pending.reject(new Error('Stopped'));pending=null;}}
 function request(type,extra={}){
  if(!worker){
   worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});const current=worker;
   worker.onmessage=({data})=>{
    if(worker!==current)return;
+   if(data.type==='diagnostic'){logEvent('worker-stage',{phase:data.phase,...data.details});monitor.touch(data.phase);status(`Model: ${data.phase}…`);return;}
+   monitor.touch();
+   if(data.type==='progress'&&data.progress.status!=='progress')logEvent('file-status',{file:data.progress.file,status:data.progress.status});
    if(data.type==='progress'){
     $('download').hidden=false;const p=data.progress;downloads.update(p);
     if(Number.isFinite(p.progress))$('download-progress').value=p.progress;else $('download-progress').removeAttribute('value');
     $('download-label').textContent=`${p.file?.split('/').at(-1)||'Model'} · ${Math.round((p.loaded||0)/1024/1024)} MB`;
    }
-   if(data.type==='ready'){$('download').hidden=true;if(pending?.type==='load'){const p=pending;pending=null;p.resolve();}}
-   if(data.type==='complete'&&pending){const p=pending;pending=null;p.resolve(data.text);}
+   if(data.type==='ready'){$('download').hidden=true;if(pending?.type==='load'){const p=pending;pending=null;monitor.stop();p.resolve();}}
+   if(data.type==='generating')status('Generating a category…');
+   if(data.type==='token')status('Generating a category… receiving output.');
+   if(data.type==='complete'&&pending){const p=pending;pending=null;monitor.stop();p.resolve(data.text);}
    if(data.type==='error'){const p=pending;pending=null;stopWorker();p?.reject(new Error(friendlyError(data.message)));}
   };
-  worker.onerror=event=>{event.preventDefault();const p=pending;pending=null;stopWorker();p?.reject(new Error(friendlyError(event.message||'AI worker failed. Try again.')));};
+  worker.onmessageerror=()=>{const p=pending;pending=null;stopWorker();logEvent('worker-message-error');p?.reject(new Error('Could not decode the worker response. Reload and retry.'));};
+  worker.onerror=event=>{event.preventDefault();logEvent('worker-error',{message:event.message});const p=pending;pending=null;stopWorker();p?.reject(new Error(friendlyError(event.message||'AI worker failed. Try again.')));};
  }
- return new Promise((resolve,reject)=>{pending={type,resolve,reject};try{worker.postMessage({type,model:selectedModel,cachedOnly:true,...extra});}catch(error){pending=null;stopWorker();reject(error);}});
+ return new Promise((resolve,reject)=>{pending={type,resolve,reject};monitor.touch(type==='load'?'loading cached model':'processing image');logEvent('worker-request',{type,model:selectedModel});try{worker.postMessage({type,model:selectedModel,cachedOnly:true,...extra});}catch(error){pending=null;stopWorker();reject(error);}});
 }
 async function thumbnail(photo){
  const img=new Image();img.src=photo.url;await img.decode();const canvas=document.createElement('canvas');const scale=Math.min(1,180/photo.width,180/photo.height);canvas.width=Math.max(1,Math.round(photo.width*scale));canvas.height=Math.max(1,Math.round(photo.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.7);
@@ -83,7 +92,9 @@ $('start').onclick=async()=>{
   if(cancelled)return;
   await runBatch(items,async item=>{
    status(`Processing ${items.indexOf(item)+1} of ${items.length}: ${item.file.name}`);
-   const photo=await preparePhoto(item.file);if(cancelled)throw Error('Stopped');
+   logEvent('photo-prepare-start',{index:items.indexOf(item),bytes:item.file.size,mime:item.file.type});
+   const photo=await preparePhoto(item.file);
+   logEvent('photo-prepare-complete',{width:photo.width,height:photo.height});if(cancelled)throw Error('Stopped');
    item.thumbnail=await thumbnail(photo);if(cancelled)throw Error('Stopped');render();
    return request('describe',{image:photo.url,prompt});
   },render,()=>cancelled);
@@ -98,6 +109,7 @@ window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();ins
 $('install').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;$('install').hidden=true;}};
 window.addEventListener('pagehide',stopWorker);
 const updateSW=registerSW({onNeedRefresh(){$('update').hidden=false;}});$('reload').onclick=()=>{if(!running)updateSW(true);};
-(async()=>{try{const adapter=await navigator.gpu?.requestAdapter();supported=!!adapter;installed=await availableModels(!!adapter?.features?.has('shader-f16'));}catch{}
+(async()=>{try{const adapter=await navigator.gpu?.requestAdapter();supported=!!adapter;logEvent('adapter-check',{supported,fp16:!!adapter?.features?.has('shader-f16')});installed=await availableModels(!!adapter?.features?.has('shader-f16'));}catch{}
+ logEvent('cached-models',{installed});
  installed=installed.filter(key=>getModel(key).family!=='florence');$('batch-model').replaceChildren();for(const key of installed){const option=document.createElement('option');option.value=key;option.textContent=getModel(key).label;$('batch-model').append(option);}
  selectedModel=installed.includes(DEFAULT_MODEL)?DEFAULT_MODEL:installed[0]||DEFAULT_MODEL;$('batch-model').value=installed.length?selectedModel:'';$('no-models').hidden=!!installed.length;modelDetails();status(supported?'Choose photos to begin.':'WebGPU is unavailable. Open this HTTPS site in an updated compatible browser.');render();})();

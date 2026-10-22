@@ -1,4 +1,6 @@
 import './style.css';
+import { logEvent,installDiagnostics } from './diagnostics.js';
+installDiagnostics();
 import { availableModels } from './model-storage.js';
 import { createDownloadView } from './download-view.js';
 import { registerSW } from 'virtual:pwa-register';
@@ -33,6 +35,7 @@ function startWorker(){
  const currentWorker=worker;
  worker.onmessage=({data})=>{
   if(worker!==currentWorker)return;
+  if(data.type==='diagnostic'){logEvent('worker-stage',{phase:data.phase,...data.details});return;}
   switch(data.type){
    case 'loading':status('Restoring the model from storage…');$('progress-area').hidden=false;break;
    case 'progress':{

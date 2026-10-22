@@ -26,3 +26,9 @@ test('file progress merges network URLs with loader filenames and identifies cac
  view.reset();assert.equal(container.children.length,0);
  }finally{globalThis.document=previous;}
 });
+test('stalled operations warn, time out, and clear their timers on completion',async()=>{
+ const {watchOperation}=await import('../src/diagnostics.js');const events=[];
+ const monitor=watchOperation(stage=>events.push(['slow',stage]),stage=>events.push(['timeout',stage]),{slowMs:5,timeoutMs:15});
+ monitor.touch('loading ONNX sessions');await new Promise(r=>setTimeout(r,35));assert.deepEqual(events,[['slow','loading ONNX sessions'],['timeout','loading ONNX sessions']]);
+ events.length=0;monitor.touch('generation');monitor.stop();await new Promise(r=>setTimeout(r,25));assert.deepEqual(events,[]);
+});

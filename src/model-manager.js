@@ -1,4 +1,6 @@
 import './style.css';
+import { logEvent,installDiagnostics } from './diagnostics.js';
+installDiagnostics();
 import { registerSW } from 'virtual:pwa-register';
 import { MODELS } from './models.js';
 import { availableModels,removeModel } from './model-storage.js';
@@ -26,6 +28,7 @@ function load(key){
  try{worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});const current=worker;
  worker.onmessage=async({data})=>{
   if(worker!==current)return;
+  if(data.type==='diagnostic'){logEvent('worker-stage',{phase:data.phase,...data.details});status(`Model: ${data.phase}…`);return;}
   if(data.type==='progress')downloads.update(data.progress);
   if(data.type==='ready'){installed=await availableModels(fp16);if(worker!==current)return;stop();status('Downloaded and verified. This model is now available on the photo pages.');}
   if(data.type==='error'){stop();status(friendlyError(data.message));}
