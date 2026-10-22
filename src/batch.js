@@ -77,7 +77,6 @@ function hideIcon(id,hidden){const icon=$(id);icon.hidden=hidden;if(hidden)icon.
 $('image-concurrency').value=readSetting('audit-concurrency',String(defaults.interface.simultaneousImages));
 $('image-concurrency').onchange=()=>saveSetting('audit-concurrency',$('image-concurrency').value);
 function moveCategory(direction,from=activeCategory){const index=categoryPages.findIndex(page=>page.category===from);if(categoryPages.length)selectCategory(categoryPages[(index+direction+categoryPages.length)%categoryPages.length].category);}
-$('previous-category').onclick=()=>moveCategory(-1);$('next-category').onclick=()=>moveCategory(1);
 let swipe=null;
 $('categorize-page').addEventListener('touchstart',event=>{if(!mobileCategories()||event.touches.length!==1||event.target.closest?.('button,input,select,textarea,a,dialog,#action-bar,#document-settings-panel')){swipe=null;return;}swipe={x:event.touches[0].clientX,y:event.touches[0].clientY,category:activeCategory};},{passive:true});
 $('categorize-page').addEventListener('touchend',event=>{if(!swipe)return;const start=swipe;swipe=null;const touch=event.changedTouches[0];if(!touch)return;const dx=touch.clientX-start.x,dy=touch.clientY-start.y;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.3)moveCategory(dx<0?1:-1,start.category);},{passive:true});
@@ -141,7 +140,7 @@ function render(){
  }
  if(!categoryPages.some(page=>page.category===activeCategory))activeCategory=categoryPages[0]?.category??null;
  selectCategory(activeCategory,false);
- $('category-tabs').hidden=!categoryPages.length;$('category-nav').hidden=categoryPages.length<2;
+ $('category-tabs').hidden=!categoryPages.length;
 }
 function stopWorker(){for(const controller of cloudControllers)controller.abort();cloudControllers.clear();monitor.stop();logEvent('worker-stopped');worker?.terminate();worker=null;if(pending){pending.reject(new Error('Stopped'));pending=null;}}
 function request(type,extra={}){

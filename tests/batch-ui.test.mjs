@@ -112,7 +112,7 @@ test('document settings opens as a floating panel and closes independently',asyn
  e['close-document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);
  e['document-settings'].onclick();e['document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);
 });
-test('category navigation wraps and removing the final image drops its page',async()=>{
+test('category tabs navigate and removing the final image drops its page',async()=>{
  const {e,w}=await app();
  e.photos.onchange({target:{files:[{name:'room.jpg'},{name:'yard.jpg'}]}});const run=e.start.onclick();
  w[0].onmessage({data:{type:'ready'}});await tick();
@@ -120,8 +120,8 @@ test('category navigation wraps and removing the final image drops its page',asy
  w[0].onmessage({data:{type:'complete',text:'{"category":"Outdoors","description":"A yard."}'}});await run;
  assert.equal(e['category-tabs'].children.length,2);
  let pages=e.groups.children;assert.match(pages[0].className,/active-category/);
- e['next-category'].onclick();assert.match(pages[1].className,/active-category/);
- e['next-category'].onclick();assert.match(pages[0].className,/active-category/);
+ e['category-tabs'].children[1].onclick();assert.match(pages[1].className,/active-category/);
+ e['category-tabs'].children[0].onclick();assert.match(pages[0].className,/active-category/);
  e['category-tabs'].children[1].onclick();assert.match(pages[1].className,/active-category/);
  const remove=pages[1].children[1].children[0].children.find(child=>child.className?.includes('remove-photo'));
  assert.equal(remove.disabled,false);remove.onclick();assert.equal(e['category-tabs'].children.length,1);assert.match(e.summary.textContent,/1 of 1 processed/);assert.match(e.groups.children[0].className,/active-category/);
