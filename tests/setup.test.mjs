@@ -6,7 +6,7 @@ import { MODELS,DEFAULT_MODEL,getModel } from '../src/models.js';
 import { resolvePrompt } from '../src/core.js';
 import { florenceTask } from '../src/inference.js';
 
-const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const html=readFileSync(new URL('../describe.html',import.meta.url),'utf8');
 const originalSource=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 function prepareSource(source){return source
  .replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replaceAll('import.meta.url',"'https://example.test/src/main.js'");

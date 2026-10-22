@@ -106,3 +106,13 @@ Estimates include some overhead and vary with shader-f16 support; these are down
 Florence uses native task tokens and postprocessing instead of the chat prompt. Its outputs appear after generation (no token streaming); object detection displays JSON labels and bounding boxes in resized-photo pixel coordinates. Florence does not expose free-form chat prompts. Changing to a conversational model restores the description/custom-prompt controls.
 
 Each model has a pinned revision and family-specific loading, preprocessing, and decoding. `npm run test:model` checks real processor/tokenizer inputs for all five without downloading model weights. Full WebGPU inference and memory limits still require testing on target phones.
+
+## Batch categorization
+
+The home page selects multiple images and uses **SmolVLM2 256M** to categorize them into Indoors, Outdoors, Documents, or Computer screens. It uses this model regardless of the model previously selected on the description page. Tap **Categorize photos** to download/restore the model and start.
+
+Images are resized and processed sequentially on the device. Stop keeps completed results; continue processes the remaining photos. Failed files can be retried. Ambiguous model responses appear under Needs attention instead of being silently assigned a category. Each card has a category selector for corrections. Computer interfaces/screens take precedence over documents, and documents take precedence over indoor/outdoor scenes when they are the main subject.
+
+Results and selected photos stay in memory for the current visit; refreshing clears them. No files are uploaded, moved, or changed in the phone gallery. Only small processed thumbnails are kept alongside the selected File references. Full-size decoded images are handled one at a time. Classification accuracy must be evaluated on your photos; the small model can misclassify them.
+
+The previous single-photo experience, including all five model choices and custom prompts, is available at `describe.html` through **Describe a photo**. Both pages are included in the production build and service-worker precache.
