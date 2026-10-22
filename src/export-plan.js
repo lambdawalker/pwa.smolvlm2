@@ -1,7 +1,8 @@
 import { CATEGORIES } from './batch-core.js';
-export function exportPlan(items,{type='docx',imageSize='medium',columns=2,layout='cards',showDescription=true,showCategory=false}={}){
+export function exportPlan(items,{type='docx',imageSize='medium',columns=2,layout='cards',showDescription=true,orientation='landscape'}={}){
  columns=Number(columns);
  if(!['docx','pptx'].includes(type)||!['cards','table'].includes(layout)||!['small','medium','big'].includes(imageSize))throw Error('Choose a document type, image size, and layout.');
+ if(!['portrait','landscape'].includes(orientation))throw Error('Choose portrait or landscape.');
  if(!Number.isInteger(columns)||columns<1||columns>4)throw Error('Choose 1–4 columns.');
  const rows={small:4,medium:3,big:2}[imageSize],perPage=rows*columns;
  const pages=[];
@@ -11,5 +12,5 @@ export function exportPlan(items,{type='docx',imageSize='medium',columns=2,layou
  }
  if(!pages.length)throw Error('Categorize at least one photo before exporting.');
  if(pages.some(page=>page.items.some(item=>!item.image)))throw Error('An image is unavailable. Categorize that photo again before exporting.');
- return {type,perPage,columns,layout,imageSize,showDescription,showCategory,rows,pages};
+ return {type,perPage,columns,layout,imageSize,showDescription,orientation,rows,pages};
 }

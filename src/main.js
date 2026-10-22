@@ -1,3 +1,4 @@
+import './handedness.js';
 import './style.css';
 import { sha256, HASH_LABEL_LENGTH, precisionLabel, imageInfoLabel } from './input-info.js';
 import { logEvent,installDiagnostics } from './diagnostics.js';

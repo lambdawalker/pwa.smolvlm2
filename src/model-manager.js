@@ -1,3 +1,4 @@
+import './handedness.js';
 import './style.css';
 import { logEvent,installDiagnostics } from './diagnostics.js';
 installDiagnostics();

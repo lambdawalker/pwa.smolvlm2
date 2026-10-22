@@ -32,14 +32,23 @@ test('both document formats and layouts produce zipped Office documents',async()
  }
 });
 
-test('image sizes determine pagination and defaults hide category headings',async()=>{
+test('image sizes determine pagination and always includes category headings',async()=>{
  for(const [imageSize,rows] of [['small',4],['medium',3],['big',2]])for(const columns of [1,2,3,4]){
-  const plan=exportPlan([item('Indoors')],{imageSize,columns});assert.equal(plan.perPage,rows*columns);assert.equal(plan.showCategory,false);assert.equal(plan.showDescription,true);
+  const plan=exportPlan([item('Indoors')],{imageSize,columns});assert.equal(plan.perPage,rows*columns);assert.equal(plan.orientation,'landscape');assert.equal(plan.showDescription,true);
  }
  for(const type of ['docx','pptx']){
   const blob=await createDocument([item('Indoors')],{type,showDescription:false,showCategory:false,columns:4,imageSize:'big'});
   const zip=await JSZip.loadAsync(await blob.arrayBuffer());
   const path=type==='docx'?'word/document.xml':'ppt/slides/slide1.xml';const xml=await zip.file(path).async('string');
-  assert.ok(!xml.includes('Indoors'));assert.ok(!xml.includes('A bright room'));
+  assert.ok(xml.includes('Indoors'));assert.ok(!xml.includes('A bright room'));
+ }
+});
+test('portrait orientation is encoded in both document formats',async()=>{
+ for(const type of ['docx','pptx']){
+  const blob=await createDocument([item('Indoors')],{type,orientation:'portrait'});
+  const zip=await JSZip.loadAsync(await blob.arrayBuffer());
+  const xml=await zip.file(type==='docx'?'word/document.xml':'ppt/presentation.xml').async('string');
+  if(type==='docx')assert.match(xml,/w:orient="portrait"/);
+  else {const size=xml.match(/<p:sldSz[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);assert.ok(size);assert.ok(Number(size[2])>Number(size[1]));}
  }
 });

@@ -1,3 +1,4 @@
+import './handedness.js';
 import { appendPhotoDetails } from './photo-details.js';
 import './style.css';
 import { CLOUD_MODEL, CLOUD_INFO, CLOUD_PRECISION, cloudAvailable, classifyCloud } from './cloud.js';
@@ -51,7 +52,7 @@ function render(){
  const busy=running||exporting;
  $('export-document').disabled=exporting||busy||!items.some(item=>item.state==='done');
  $('cloud-consent').disabled=busy;$('batch-model').disabled=busy||(!installed.length&&!cloudEnabled);$('category-prompt').disabled=busy;$('reset-prompt').disabled=busy;
- $('pick').disabled=busy;$('clear').disabled=busy||!items.length;$('start').disabled=exporting||(!running&&(!canRun()||!items.some(i=>i.state==='pending')));$('start').textContent=running?'Stop':'Categorize';$('auto-categorize').disabled=busy;
+ $('pick').disabled=busy;$('clear').disabled=busy||!items.length;$('start').disabled=exporting||(!running&&(!canRun()||!items.some(i=>i.state==='pending')));$('brain-icon').hidden=running;$('stop-icon').hidden=!running;$('start').hidden=$('auto-categorize').checked&&!running&&!cancelled&&!batchPause;$('start').setAttribute('aria-label',running?'Stop':'Categorize');$('start').title=running?'Stop':'Categorize';$('auto-categorize').disabled=busy;
  $('cancel').hidden=true;$('spinner').hidden=!busy;$('retry').hidden=busy||!items.some(i=>i.state==='error');$('reload').disabled=busy;
  const finished=items.filter(i=>['done','review','error'].includes(i.state)).length;
  const attention=items.filter(i=>['review','error'].includes(i.state)).length;
@@ -166,15 +167,16 @@ const updateSW=registerSW({onNeedRefresh(){$('update').hidden=false;}});$('reloa
 
 $('export-document').onclick=async()=>{
  if(exporting||running)return;
- exporting=true;render();$('export-status').textContent='Creating document…';$('export-save').hidden=true;
+ exporting=true;render();$('export-status').textContent='Creating document…';
  try{
   const type=$('export-type').value;
-  const options={type,imageSize:$('export-size').value,columns:$('export-columns').value,layout:$('export-layout').value,showDescription:$('export-description').checked,showCategory:$('export-category').checked};
+  const options={type,imageSize:$('export-size').value,columns:$('export-columns').value,layout:$('export-layout').value,showDescription:$('export-description').checked,orientation:$('export-orientation').value};
   const {createDocument}=await import('./export-document.js');
   const blob=await createDocument(items,options);
   if(exportURL)URL.revokeObjectURL(exportURL);
-  exportURL=URL.createObjectURL(blob);const link=$('export-save');link.href=exportURL;link.download=`audit-${new Date().toISOString().slice(0,10)}.${type}`;link.hidden=false;link.textContent='Download document';
-  $('export-status').textContent='Ready. Tap Download document to save.';
+  exportURL=URL.createObjectURL(blob);const link=document.createElement('a');link.href=exportURL;link.download=`audit-${new Date().toISOString().slice(0,10)}.${type}`;document.body.append(link);link.click();link.remove();
+  const createdURL=exportURL;setTimeout(()=>{URL.revokeObjectURL(createdURL);if(exportURL===createdURL)exportURL=null;},60000);
+  $('export-status').textContent='Document created. Download started.';
  }catch(error){$('export-status').textContent=error.message||'Could not create the document. Try fewer photos.';}
  finally{exporting=false;render();}
 };

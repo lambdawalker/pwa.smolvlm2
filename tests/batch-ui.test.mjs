@@ -84,9 +84,9 @@ test('automatic mode starts on selection and the same button stops processing',a
  const {e,w}=await app(true,['256m'],false,undefined,true);
  assert.equal(e['auto-categorize'].checked,true);
  e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});
- assert.equal(w.length,1);assert.equal(e.start.textContent,'Stop');assert.equal(e.start.disabled,false);
+ assert.equal(w.length,1);assert.equal(e['stop-icon'].hidden,false);assert.equal(e.start.disabled,false);
  assert.equal(e['batch-progress'].max,2);assert.equal(e['batch-progress'].value,0);
- await e.start.onclick();await tick();assert.equal(w[0].stopped,true);assert.equal(e.start.textContent,'Categorize');
+ await e.start.onclick();await tick();assert.equal(w[0].stopped,true);assert.equal(e['brain-icon'].hidden,false);
 });
 
 test('attention count highlights failures and identifies the scroll target',async()=>{
