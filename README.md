@@ -109,7 +109,7 @@ Each model has a pinned revision and family-specific loading, preprocessing, and
 
 ## Batch categorization
 
-The home page selects multiple images and uses **SmolVLM2 256M** to categorize them into Indoors, Outdoors, Documents, or Computer screens. It uses this model regardless of the model previously selected on the description page. Tap **Categorize photos** to download/restore the model and start.
+The home page selects multiple images and uses **SmolVLM2 256M** to categorize them into Indoors, Outdoors, Documents, or Computer screens. The dropdown also offers SmolVLM2 500M, original SmolVLM 500M, and Moondream2. Florence-2 is disabled here because it does not support the free-form categorization prompt; it remains available on the description page. The batch selector defaults to 256M on each visit and is independent of the description page. Switching models releases the previous worker and keeps completed categories; only pending photos use the new selection. The selector is locked during processing—stop first to change models. Tap **Categorize photos** to download/restore the model and start.
 
 Images are resized and processed sequentially on the device. Stop keeps completed results; continue processes the remaining photos. Failed files can be retried. Ambiguous model responses appear under Needs attention instead of being silently assigned a category. Each card has a category selector for corrections. Computer interfaces/screens take precedence over documents, and documents take precedence over indoor/outdoor scenes when they are the main subject.
 

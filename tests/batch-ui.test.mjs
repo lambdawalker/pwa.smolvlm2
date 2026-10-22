@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { CATEGORIES,CATEGORY_PROMPT,runBatch } from '../src/batch-core.js';
+import { MODELS,getModel } from '../src/models.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 async function app(supported=true){
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
@@ -10,7 +11,7 @@ async function app(supported=true){
  const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},removeAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const workers=[];class Worker{constructor(){workers.push(this);this.sent=[];}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
+ vm.runInNewContext(source,{createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{addEventListener(){}},registerSW:()=>()=>{}});
  await tick();return {e:elements,w:workers};
 }
 test('main page uses 256M, sends images serially and resumes after stop',async()=>{
@@ -25,4 +26,18 @@ test('main page uses 256M, sends images serially and resumes after stop',async()
 });
 test('unsupported browser never starts model download',async()=>{
  const {e,w}=await app(false);e.photos.onchange({target:{files:[{name:'a.jpg'}]}});assert.equal(e.start.disabled,true);await e.start.onclick();assert.equal(w.length,0);
+});
+
+test('changing batch model releases the worker, preserves results and applies to remaining photos',async()=>{
+ const {e,w}=await app();e.photos.onchange({target:{files:[{name:'a.jpg'}]}});
+ const first=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();
+ assert.equal(e['batch-model'].disabled,true);
+ w[0].onmessage({data:{type:'complete',text:'Indoors'}});await first;
+ e['batch-model'].value='500m';e['batch-model'].onchange();assert.equal(w[0].stopped,true);assert.match(e.summary.textContent,/1 of 1 processed/);
+ e.photos.onchange({target:{files:[{name:'b.jpg'}]}});
+ const second=e.start.onclick();assert.equal(w[1].sent[0].model,'500m');w[1].onmessage({data:{type:'ready'}});await tick();assert.equal(w[1].sent[1].model,'500m');
+ w[1].onmessage({data:{type:'complete',text:'Outdoors'}});await second;assert.match(e.summary.textContent,/2 of 2 processed/);
+});
+test('Florence cannot be selected for prompt-based categorization',async()=>{
+ const {e}=await app();e['batch-model'].value='florence';e['batch-model'].onchange();assert.equal(e['batch-model'].value,'256m');
 });

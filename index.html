@@ -7,8 +7,12 @@
 <nav class="page-nav"><a href="./" aria-current="page">Categorize photos</a><a href="./describe.html">Describe a photo</a></nav>
 <section class="intro"><p class="eyebrow">YOUR GALLERY. A LITTLE MORE ORDER.</p><h1>A place for<br>every <em>photo.</em></h1><p class="lede">Choose a few photos. Let Little Lens sort them.<br>Indoors, outdoors, documents, and computer screens.</p><p class="privacy">◈ Your photos stay on this device.</p></section>
 <section class="batch-controls" aria-label="Choose and categorize photos">
-<p class="eyebrow">POWERED BY SMOLVLM2 · 256M</p><h2>Choose your photos.</h2>
-<p>Photos are processed one at a time. The first run downloads roughly 350–650 MB of model files; Wi-Fi is recommended.</p>
+<p class="eyebrow">ON-DEVICE PHOTO CATEGORIZATION</p><h2>Choose your photos.</h2>
+<label for="batch-model">Categorization model</label>
+<select id="batch-model" aria-describedby="batch-model-details"></select>
+<p id="batch-model-details" class="small"></p>
+<p class="small">Florence-2 uses fixed vision tasks and is available on the description page. Switching models keeps completed categories and uses your choice for remaining photos.</p>
+<p>Photos are processed one at a time. Model files download on the first run; Wi-Fi is recommended.</p>
 <div class="batch-actions"><button id="pick" class="primary">＋ Choose photos</button><button id="start" class="primary" disabled>Categorize photos</button><button id="cancel" class="quiet" hidden>Stop</button><button id="clear" class="quiet" disabled>Clear photos</button></div>
 <input id="photos" type="file" accept="image/*" multiple hidden>
 <p class="small">Keep this page open while processing. Results last for this visit and do not move or change files in your gallery. Review the categories; AI can make mistakes.</p>
