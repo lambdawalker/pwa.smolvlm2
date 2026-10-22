@@ -1,4 +1,5 @@
 import { AutoProcessor, AutoTokenizer, AutoModelForVision2Seq, Florence2ForConditionalGeneration, Moondream1ForConditionalGeneration, RawImage, TextStreamer, env } from '@huggingface/transformers';
+import { sha256 } from './input-info.js';
 import { configureModelLoading } from './model-loading.js';
 import { installModelDownloads } from './downloads.js';
 import { recordModel } from './model-storage.js';
@@ -8,7 +9,7 @@ env.allowLocalModels=false;
 env.useBrowserCache=true;
 env.backends.onnx.wasm.numThreads=1;
 env.backends.onnx.wasm.wasmPaths=new URL(`${import.meta.env.BASE_URL}ort/`,self.location.origin).href;
-let processor, tokenizer, model, modelKey, busy=false;
+let processor, tokenizer, model, modelKey, loadedDtype, busy=false;
 self.onmessage=async ({data})=>{
  if(!['load','describe'].includes(data.type)||busy)return;
  busy=true;
@@ -34,18 +35,21 @@ self.onmessage=async ({data})=>{
    stage('loading tokenizer');
    tokenizer=selected.family==='moondream'?await AutoTokenizer.from_pretrained(selected.id,{progress_callback,local_files_only:!!data.cachedOnly,revision:selected.revision}):processor.tokenizer;
    const Model=selected.family==='florence'?Florence2ForConditionalGeneration:selected.family==='moondream'?Moondream1ForConditionalGeneration:AutoModelForVision2Seq;
-   stage('loading ONNX sessions',{dtype:modelDtypes(selected.family,fp16)});
+   loadedDtype=modelDtypes(selected.family,fp16);
+   stage('loading ONNX sessions',{dtype:loadedDtype});
    model=await Model.from_pretrained(selected.id,{
-    local_files_only:!!data.cachedOnly,revision:selected.revision,device:'webgpu',dtype:modelDtypes(selected.family,fp16),progress_callback,
+    local_files_only:!!data.cachedOnly,revision:selected.revision,device:'webgpu',dtype:loadedDtype,progress_callback,
    });
    if(!data.cachedOnly)await recordModel(data.model,fp16,files);
   }
+  stage('precision',{dtype:loadedDtype,model:data.model,device:'webgpu'});
   stage('model ready');
   modelKey=data.model;
   send('ready');
   if(data.type==='load')return;
   stage('decoding image');
   const image=await RawImage.fromURL(data.image);
+  stage('decoded image',{width:image.width,height:image.height,channels:image.channels,pixelHash:await sha256(image.data)});
 
   const task=selected.family==='florence'?florenceTask(data.task):undefined;
   stage('preparing model inputs',{width:image.width,height:image.height});

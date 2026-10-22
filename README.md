@@ -138,3 +138,9 @@ The existing resize reduces the image data sent to the worker and its decoding w
 ### Troubleshooting stalled inference
 
 Open **Troubleshooting logs** at the bottom of a page and choose **Copy diagnostic report** after reproducing a failure. The same timestamped entries appear in the browser console with the `[Little Lens]` prefix. Reports contain browser capabilities, model stages, GPU limits, input tensor dimensions, and errors, without intentionally recording images, filenames, prompt text, or generated output. Review reports before sharing. The categorization worker warns after 45 seconds without messages and is terminated after three minutes without messages; loading can be retried. This is diagnostic instrumentation, not evidence that every device's inference issue is fixed.
+
+### Comparing devices
+
+Precision labels show the actual loaded ONNX dtype for each component, not just whether the GPU supports FP16. Each batch result retains its own model, precision and prompt fingerprint. Full SHA-256 prompt hashes are logged for the exact trimmed prompt sent to the worker; UI labels show the first 12 hexadecimal characters (48 bits, a comparison aid rather than a uniqueness guarantee).
+
+Photo diagnostics include original MIME type, byte size and decoded dimensions; prepared JPEG dimensions, byte size and quality; SHA-256 hashes of the original file, prepared JPEG bytes, resized canvas pixels, and the worker-decoded pixels. Tensor dimensions are also logged. Compare source hashes first, then prepared/pixel hashes to identify preprocessing differences. These hashes are diagnostic identifiers, not anonymization; reports still omit actual images and prompt/output text.

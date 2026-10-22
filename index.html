@@ -11,10 +11,10 @@
 <label for="batch-model">Categorization model</label>
 <select id="batch-model" aria-describedby="batch-model-details"></select>
 <p id="no-models" hidden>No downloaded categorization models. <a href="./models.html">Download a model</a> to begin.</p>
-<p id="batch-model-details" class="small"></p>
+<p id="precision-label" class="small">Precision: waiting for model</p><p id="batch-model-details" class="small"></p>
 <p class="small">Florence-2 uses fixed vision tasks and is available on the description page. Switching models keeps completed categories and uses your choice for remaining photos.</p>
 <p>Photos are processed one at a time. Download models on the downloads page first.</p>
-<label for="category-prompt">Categorization prompt</label><textarea id="category-prompt" rows="6" maxlength="1000"></textarea><button id="reset-prompt" class="quiet">Reset prompt</button><p class="small">Ask for exactly one of: Indoors, Outdoors, Documents, Computer screens. Other answers need manual review.</p>
+<label for="category-prompt">Categorization prompt</label><textarea id="category-prompt" rows="6" maxlength="1000"></textarea><p id="prompt-id" class="small">Prompt ID appears when processing starts.</p><button id="reset-prompt" class="quiet">Reset prompt</button><p class="small">Ask for exactly one of: Indoors, Outdoors, Documents, Computer screens. Other answers need manual review.</p>
 <div class="batch-actions"><button id="pick" class="primary">＋ Choose photos</button><button id="start" class="primary" disabled>Categorize photos</button><button id="cancel" class="quiet" hidden>Stop</button><button id="clear" class="quiet" disabled>Clear photos</button></div>
 <input id="photos" type="file" accept="image/*" multiple hidden>
 <p class="small">Keep this page open while processing. Results last for this visit and do not move or change files in your gallery. Review the categories; AI can make mistakes.</p>

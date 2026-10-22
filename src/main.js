@@ -1,4 +1,5 @@
 import './style.css';
+import { sha256, HASH_LABEL_LENGTH, precisionLabel, imageInfoLabel } from './input-info.js';
 import { logEvent,installDiagnostics } from './diagnostics.js';
 installDiagnostics();
 import { availableModels } from './model-storage.js';
@@ -35,7 +36,7 @@ function startWorker(){
  const currentWorker=worker;
  worker.onmessage=({data})=>{
   if(worker!==currentWorker)return;
-  if(data.type==='diagnostic'){logEvent('worker-stage',{phase:data.phase,...data.details});return;}
+  if(data.type==='diagnostic'){if(data.phase==='decoded image')$('image-info').textContent=imageInfoLabel(photo?.info)+`\nDecoded pixel ID: ${data.details.pixelHash.slice(0,HASH_LABEL_LENGTH)}`;if(data.phase==='precision')$('precision-label').textContent=precisionLabel(data.details.dtype);logEvent('worker-stage',{phase:data.phase,...data.details});return;}
   switch(data.type){
    case 'loading':status('Restoring the model from storage…');$('progress-area').hidden=false;break;
    case 'progress':{
@@ -72,13 +73,13 @@ $('pick').onclick=()=>$('photo').click();
 $('photo').onchange=async event=>{
  const file=event.target.files?.[0];if(!file)return;const version=++pickVersion;setBusy(true);$('cancel').hidden=true;status('Preparing your photo…');
  try{
-  const next=await preparePhoto(file);if(version!==pickVersion)return;photo=next;
+  const next=await preparePhoto(file);if(version!==pickVersion)return;photo=next;$('image-info').textContent=imageInfoLabel(next.info);logEvent('photo-prepare-complete',next.info||{});
   $('preview').src=next.url;$('preview').hidden=false;$('empty').hidden=true;$('remove').hidden=false;
   $('photo-meta').textContent=`${next.width} × ${next.height}`;$('pick').textContent='↻ Change photo';$('result-box').hidden=true;
   status(supported?'Ready when you are.': 'Photo ready, but this browser does not provide WebGPU.');
  }catch(e){status(e.message);}finally{event.target.value='';setBusy(false);}
 };
-$('remove').onclick=()=>{photo=null;$('preview').removeAttribute('src');$('preview').hidden=true;$('empty').hidden=false;$('remove').hidden=true;$('result-box').hidden=true;$('photo-meta').textContent='One moment at a time';$('pick').textContent='＋ Choose a photo';setBusy(false);status('Choose a new photo.');};
+$('remove').onclick=()=>{photo=null;$('image-info').textContent='';$('prompt-id').textContent='';$('preview').removeAttribute('src');$('preview').hidden=true;$('empty').hidden=false;$('remove').hidden=true;$('result-box').hidden=true;$('photo-meta').textContent='One moment at a time';$('pick').textContent='＋ Choose a photo';setBusy(false);status('Choose a new photo.');};
 $('describe').onclick=async()=>{
  if(busy||!photo||!supported)return;
  let prompt,task;try{if(getModel(selectedModel).family==='florence'){task=$('florence-task').value;florenceTask(task);}else{prompt=resolvePrompt($('style').value,$('custom-prompt').value);}}catch(e){status(e.message);$('custom-prompt').focus();return;}
@@ -86,7 +87,7 @@ $('describe').onclick=async()=>{
  status(`Starting ${getModel(selectedModel).label}…`);
  // Best-effort persistence; denial never blocks inference.
  navigator.storage?.persist?.().catch(()=>{});
- try{startWorker().postMessage({type:'describe',image:photo.url,model:selectedModel,cachedOnly:true,prompt,task});}catch(e){fail(e.message);}
+ try{const promptHash=await sha256(prompt??florenceTask(task));$('prompt-id').textContent=`Prompt ID: ${promptHash.slice(0,HASH_LABEL_LENGTH)}`;logEvent('prompt-fingerprint',{sha256:promptHash,model:selectedModel});startWorker().postMessage({type:'describe',image:photo.url,model:selectedModel,cachedOnly:true,prompt,task});}catch(e){fail(e.message);}
 };
 $('cancel').onclick=()=>{stopWorker();if(loadingModel){loadingModel=false;showSetup();$('load-model').textContent='Retry loading';$('step-model').textContent='Loading cancelled';}setBusy(false);$('progress-area').hidden=true;$('copy').disabled=!$('result').textContent;status('Cancelled. Completed downloads can be reused on retry.');};
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('result').textContent);status('Description copied.');}catch{status('Copy unavailable. Select and copy the description manually.');}};
