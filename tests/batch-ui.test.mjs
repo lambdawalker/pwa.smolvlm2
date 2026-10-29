@@ -104,7 +104,7 @@ test('card preview opens the original source file and releases it on close',asyn
  e.photos.onchange({target:{files:[file]}});const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();w[0].onmessage({data:{type:'complete',text:'{"category":"Indoors","description":"A room."}'}});await run;
  const card=e.groups.children[0].children[1].children[0];const image=card.children.find(child=>child.className==='open-original');image.onclick();
  assert.equal(originalFiles[0],file);assert.equal(e['original-image'].src,'blob:original');assert.equal(e['original-viewer'].open,true);
- e['close-original'].onclick();assert.equal(e['original-viewer'].open,false);assert.deepEqual(revoked,['blob:original']);
+ e['close-original'].onclick();assert.equal(e['original-viewer'].open,false);assert.deepEqual(revoked,['blob:original','blob:original']);
 });
 test('document settings opens as a floating panel and closes independently',async()=>{
  const {e}=await app();e['document-settings-panel'].hidden=true;
@@ -179,4 +179,9 @@ test('returning from the photo picker cannot start a sync that drops selected ph
  let listingCalls=0,uploads=0;
  const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>{if(!path){listingCalls++;return {sessions:[{id:'s',name:'Visit'}]}}return {photos:[]}},mergePhotos:async()=>[],uploadPhoto:async()=>{uploads++;return {id:'p',revision:2}}};
  const {e,events}=await app(false,[],true,undefined,false,false,shared);const before=listingCalls;e.pick.onclick();await events.focus();assert.equal(listingCalls,before);await e.photos.onchange({target:{files:[{name:'photo.jpg',size:100,type:'image/jpeg'}]}});assert.equal(uploads,1);assert.match(e.summary.textContent,/of 1 processed/);
+});
+
+test('selected photos are visible while cloud upload is still pending',async()=>{
+ let finish;const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>!path?{sessions:[{id:'s',name:'Visit'}]}:{photos:[]},mergePhotos:async()=>[],uploadPhoto:()=>new Promise(resolve=>{finish=resolve})};
+ const {e}=await app(false,[],true,undefined,false,false,shared);const uploading=e.photos.onchange({target:{files:[{name:'photo.jpg',size:100,type:'image/jpeg'}]}});await tick();assert.equal(e.groups.children[0].children[1].children.length,1);const card=e.groups.children[0].children[1].children[0];assert.ok(card.children.some(child=>child.className==='open-original'));assert.ok(card.children.some(child=>child.textContent==='Uploading'));finish({id:'p',revision:2});await uploading;assert.ok(e.groups.children[0].children[1].children[0].children.some(child=>child.textContent==='Uploaded'));
 });
