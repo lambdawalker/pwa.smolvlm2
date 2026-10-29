@@ -5,19 +5,19 @@ import { appendPhotoDetails as renderPhotoDetails } from '../src/photo-details.j
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { CATEGORIES,CATEGORY_PROMPT,runBatch } from '../src/batch-core.js';
+import { CATEGORIES,CATEGORY_PROMPT,runBatch,parseResult } from '../src/batch-core.js';
 import { resolvePrompt } from '../src/core.js';
 import { CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION } from '../src/cloud.js';
 import { MODELS,getModel } from '../src/models.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function app(supported=true,installed=Object.keys(MODELS),cloud=false,cloudClassify=async()=>'Indoors',auto=false,mobile=false){
+async function app(supported=true,installed=Object.keys(MODELS),cloud=false,cloudClassify=async()=>'Indoors',auto=false,mobile=false,shared=null){
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const source=readFileSync(new URL('../src/batch.js',import.meta.url),'utf8').replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replaceAll('import.meta.url',"'https://example.test/src/batch.js'");
  const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},addEventListener(name,handler){this.events??={};this.events[name]=handler;},showModal(){this.open=true;},close(){this.open=false;this.events?.close?.();},removeAttribute(){},setAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const originalFiles=[],revoked=[];class PhotoURL extends URL{static createObjectURL(file){originalFiles.push(file);return 'blob:original';}static revokeObjectURL(url){revoked.push(url);}}
  const workers=[];class Worker{constructor(){workers.push(this);this.sent=[];}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{defaults,getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{matchMedia:()=>({matches:mobile}),addEventListener(){}},registerSW:()=>()=>{}});
+ vm.runInNewContext(source,{...(shared||{}),setInterval:()=>0,parseResult,defaults,getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,MODELS,getModel,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{matchMedia:()=>({matches:mobile}),addEventListener(){}},registerSW:()=>()=>{}});
  await tick();elements['image-concurrency'].value='1';if(!auto)elements['auto-categorize'].checked=false;return {e:elements,w:workers,originalFiles,revoked};
 }
 test('main page uses 256M, sends images serially and resumes after stop',async()=>{
@@ -54,12 +54,12 @@ test('only downloaded models are offered and an empty cache cannot start',async(
 });
 test('custom categorization prompt is validated and passed with the image',async()=>{
  const {e,w}=await app();e.photos.onchange({target:{files:[{name:'a.jpg'}]}});e['category-prompt'].value=' ';await e.start.onclick();assert.equal(w.length,0);
- e['category-prompt'].value='  Pick Indoors or Outdoors.  ';const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();assert.equal(w[0].sent[1].prompt,'Pick Indoors or Outdoors.');assert.equal(w[0].sent[1].cachedOnly,true);w[0].onmessage({data:{type:'complete',text:'An uncertain answer'}});await run;
+ e['category-prompt'].value='  Pick Indoors or Outdoors.  ';const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();assert.equal(w[0].sent[1].prompt,'Pick Indoors or Outdoors. Keep the description to one sentence, as short as possible.');assert.equal(w[0].sent[1].cachedOnly,true);w[0].onmessage({data:{type:'complete',text:'An uncertain answer'}});await run;
  const cards=e.groups.children.flatMap(s=>s.children[1].children);assert.ok(cards.some(card=>card.children?.some(child=>child.children?.some(n=>n.children?.some(span=>span.textContent==='An uncertain answer')))));
 });
 
 test('cloud works without WebGPU or downloads, requires consent and preserves raw answers',async()=>{
- let calls=0;const {e,w}=await app(false,[],true,async(image,prompt,signal)=>{calls++;assert.equal(image,'data:photo');assert.equal(prompt,CATEGORY_PROMPT);assert.equal(signal.aborted,false);return '{"category":"Documents","description":"A scene."}';});
+ let calls=0;const {e,w}=await app(false,[],true,async(image,prompt,signal)=>{calls++;assert.equal(image,'data:photo');assert.equal(prompt,CATEGORY_PROMPT+' Keep the description to one sentence, as short as possible.');assert.equal(signal.aborted,false);return '{"category":"Documents","description":"A scene."}';});
  assert.equal(e['batch-model'].value,CLOUD_MODEL);e.photos.onchange({target:{files:[{name:'a.jpg'}]}});
  assert.equal(e['cloud-consent'].checked,true);e['cloud-consent'].checked=false;e['cloud-consent'].onchange();await e.start.onclick();assert.equal(calls,0);assert.equal(e.start.disabled,true);
  e['cloud-consent'].checked=true;e['cloud-consent'].onchange();assert.equal(e.start.disabled,false);
@@ -124,7 +124,7 @@ test('category tabs navigate and removing the final image drops its page',async(
  e['category-tabs'].children[0].onclick();assert.match(pages[0].className,/active-category/);
  e['category-tabs'].children[1].onclick();assert.match(pages[1].className,/active-category/);
  const remove=pages[1].children[1].children[0].children.find(child=>child.className?.includes('remove-photo'));
- assert.equal(remove.disabled,false);remove.onclick();assert.equal(e['category-tabs'].children.length,1);assert.match(e.summary.textContent,/1 of 1 processed/);assert.match(e.groups.children[0].className,/active-category/);
+ assert.equal(remove.disabled,false);await remove.onclick();assert.equal(e['category-tabs'].children.length,1);assert.match(e.summary.textContent,/1 of 1 processed/);assert.match(e.groups.children[0].className,/active-category/);
 });
 
 test('upload becomes the enabled cancel control while a batch runs',async()=>{
@@ -145,4 +145,19 @@ test('mobile swipes over empty space wrap once and vertical gestures leave the c
  const active=()=>e.groups.children.findIndex(page=>page.className.includes('active-category'));
  assert.equal(active(),0);swipe(50,205);assert.equal(active(),1);swipe(50,205);assert.equal(active(),0);swipe(250,205);assert.equal(active(),1);
  swipe(155,350);assert.equal(active(),1);swipe(50,205,{closest:()=>({})});assert.equal(active(),1);
+});
+
+test('signed-in sessions sync uploads and classifications between two devices',async()=>{
+ const records=[];let nextId=0;
+ const shared={authConfig:async()=>({enabled:true}),credentials:()=>({access:'token'}),signOut(){},
+  sessionAPI:async(path='',method='GET',body)=>{if(path==='')return {sessions:[{id:'session',name:'Site visit'}]};if(path==='/session')return {photos:records.map(p=>({...p}))};if(method==='DELETE'){const index=records.findIndex(p=>path.endsWith('/'+p.id));records.splice(index,1);return {deleted:true};}throw Error('unexpected '+path);},
+  uploadPhoto:async(session,file)=>{const photo={id:String(++nextId),revision:2,state:'pending',mime:file.type,bytes:file.size,originalUrl:'original'};records.push(photo);return photo;},
+  mergePhotos:async(existing,photos)=>photos.map(photo=>({...existing.find(i=>i.remoteId===photo.id),remoteId:photo.id,revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,file:{name:photo.id,type:photo.mime,size:photo.bytes},thumbnail:'data:photo',exportImage:'data:photo'})),
+  savePhoto:async(session,item,changes)=>{const photo=records.find(p=>p.id===item.remoteId);assert.equal(photo.revision,item.revision);Object.assign(photo,changes);photo.revision++;item.revision=photo.revision;return photo;}
+ };
+ const phone=await app(false,[],true,async()=>' ',false,false,shared);assert.equal(phone.e['sessions-panel'].hidden,false);assert.equal(phone.e['session-select'].children[0].textContent,'Site visit');
+ await phone.e.photos.onchange({target:{files:[{name:'phone.jpg',size:123,type:'image/jpeg'}]}});assert.equal(records.length,1);assert.equal(records[0].state,'pending');
+ const laptop=await app(false,[],true,async()=>'{"category":"Outdoors","description":"A tree."}',false,false,shared);assert.match(laptop.e.summary.textContent,/0 of 1 processed/);await laptop.e.start.onclick();assert.equal(records[0].state,'done');assert.equal(records[0].description,'A tree.');assert.equal(laptop.e['export-document'].disabled,false);
+ const reopenedPhone=await app(false,[],true,async()=>' ',false,false,shared);assert.match(reopenedPhone.e.summary.textContent,/1 of 1 processed \| 1 categorized/);assert.equal(reopenedPhone.e['export-document'].disabled,false);
+ const remove=reopenedPhone.e.groups.children[0].children[1].children[0].children.find(c=>c.className?.includes('remove-photo'));await remove.onclick();assert.equal(records.length,0);
 });

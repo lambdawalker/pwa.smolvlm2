@@ -57,7 +57,13 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, Code: pulumi.NewFileArchive("../backend/build/backend.zip"), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(29), Environment: &lambda.FunctionEnvironmentArgs{Variables: pulumi.StringMap{"GEMINI_API_KEY": cfg.GetSecret("geminiApiKey"), "SITE_ORIGIN": pulumi.String("https://" + cfg.Get("domain"))}}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn([]pulumi.Resource{policy}))
+	accountEnv, err := accountInfrastructure(ctx, role)
+	if err != nil {
+		return err
+	}
+	accountEnv["GEMINI_API_KEY"] = cfg.GetSecret("geminiApiKey")
+	accountEnv["SITE_ORIGIN"] = pulumi.String("https://" + cfg.Get("domain"))
+	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, Code: pulumi.NewFileArchive("../backend/build/backend.zip"), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(29), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn([]pulumi.Resource{policy}))
 	if err != nil {
 		return err
 	}

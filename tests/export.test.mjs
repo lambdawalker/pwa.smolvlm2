@@ -9,7 +9,7 @@ test('export paginates categories separately and skips unfinished photos',()=>{
  const items=[...Array.from({length:7},()=>item('Indoors')),item('Outdoors'),{state:'pending',category:'Documents'}];
  const plan=exportPlan(items);
  assert.deepEqual(plan.pages.map(p=>[p.category,p.items.length]),[['Indoors',7],['Outdoors',1]]);
- assert.equal(plan.columns,2);assert.equal(plan.rows,7);
+ assert.equal(plan.type,'pptx');assert.equal(plan.columns,2);assert.equal(plan.rows,7);
  assert.throws(()=>exportPlan(items,{columns:17}),/1–16 columns/);
  assert.throws(()=>exportPlan([]),/at least one/);
  assert.throws(()=>exportPlan([{state:'done',category:'Indoors'}]),/unavailable/);
@@ -21,12 +21,12 @@ test('both document formats and layouts produce zipped Office documents',async()
   const zip=await JSZip.loadAsync(bytes);
   if(type==='docx'){
    const xml=await zip.file('word/document.xml').async('string');
-   assert.match(xml,/Indoors/);assert.match(xml,/Outdoors/);assert.match(xml,/A bright room/);assert.match(xml,/pageBreakBefore/);
+   assert.match(xml,/Indoors/);assert.match(xml,/Outdoors/);assert.match(xml,/A bright room/);assert.match(xml,/pageBreakBefore/);assert.doesNotMatch(xml,/w:shd|w:val="single"/);
    assert.ok(Object.keys(zip.files).some(name=>name.startsWith('word/media/')&&name.endsWith('.jpg')));
   }else{
    const slides=Object.keys(zip.files).filter(name=>/^ppt\/slides\/slide\d+\.xml$/.test(name));assert.equal(slides.length,2);
    const xml=await zip.file(slides[0]).async('string');assert.match(xml,/Indoors/);assert.match(xml,/A bright room/);assert.match(xml,/<p:pic>/);
-   if(layout==='table')assert.match(xml,/<a:tbl>/);
+   assert.doesNotMatch(xml,/<a:tbl>|roundRect|F0F5F2|D9D9D9/);
   }
 
  }
@@ -68,5 +68,12 @@ test('typed dimensions support 16 by 16 and reject invalid values',async()=>{
  for(const type of ['docx','pptx'])for(const layout of ['table','cards'])for(const showDescription of [false,true]){
   const blob=await createDocument([item('Indoors')],{type,layout,showDescription,rows:16,columns:16});const zip=await JSZip.loadAsync(await blob.arrayBuffer());
   const xml=await zip.file(type==='docx'?'word/document.xml':'ppt/slides/slide1.xml').async('string');assert.ok(!/(?:w:w|cx|cy)="-/.test(xml));
+ }
+});
+
+test('photo geometry maximizes square photos within cells with positive gutters',async()=>{
+ const {gridGeometry}=await import('../src/export-document.js');
+ for(const columns of [1,2,16])for(const rows of [1,7,16])for(const description of [false,true]){
+  const g=gridGeometry(6.7,12.05,columns,rows,description);assert.ok(g.gap>0);assert.ok(g.size<=g.w);assert.ok(g.size+g.text<=g.h);assert.ok(Math.abs(g.size-Math.min(g.w,g.h-g.text-(description?.035:0)))<.001);
  }
 });

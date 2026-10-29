@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -14,6 +15,20 @@ import (
 
 // Local inference stays in the browser; cloud requests are explicitly selected.
 func handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	if req.RawPath == "/api/auth-config" {
+		if req.RequestContext.HTTP.Method != "GET" {
+			return cloudError(405, "Use GET."), nil
+		}
+		return accountConfig(), nil
+	}
+	if req.RawPath == "/api/sessions" || strings.HasPrefix(req.RawPath, "/api/sessions/") {
+		return sessionRoute(ctx, req), nil
+	}
+	if req.RawPath == "/api/classify" && accountsEnabled() {
+		if _, e := accountOwner(ctx, req); e != nil {
+			return cloudError(401, "Sign in to classify photos."), nil
+		}
+	}
 	if req.RawPath == "/api/cloud" || req.RawPath == "/api/classify" {
 		return cloudRoute(ctx, req), nil
 	}
@@ -51,7 +66,7 @@ func main() {
 			http.Error(w, "Request too large", 413)
 			return
 		}
-		req := events.APIGatewayV2HTTPRequest{RawPath: r.URL.Path, Body: string(body), Headers: map[string]string{"origin": r.Header.Get("Origin")}}
+		req := events.APIGatewayV2HTTPRequest{RawPath: r.URL.Path, Body: string(body), Headers: map[string]string{"origin": r.Header.Get("Origin"), "authorization": r.Header.Get("Authorization")}}
 		req.RequestContext.HTTP.Method = r.Method
 		response, _ := handle(r.Context(), req)
 		for key, value := range response.Headers {

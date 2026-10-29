@@ -59,6 +59,21 @@ func TestCustomDomainInfrastructure(t *testing.T) {
 			t.Fatalf("public S3 access: %s", key)
 		}
 	}
+
+	for _, key := range []string{"blockPublicAcls", "blockPublicPolicy", "ignorePublicAcls", "restrictPublicBuckets"} {
+		if !r["audit-photos-private"][resource.PropertyKey(key)].BoolValue() {
+			t.Fatalf("public photo bucket: %s", key)
+		}
+	}
+	if r["audit-web-client"]["generateSecret"].BoolValue() {
+		t.Fatal("browser client cannot hold a secret")
+	}
+	if r["audit-sessions"]["billingMode"].StringValue() != "PAY_PER_REQUEST" {
+		t.Fatal("sessions must use on-demand billing")
+	}
+	if r["audit-users"]["passwordPolicy"].ObjectValue()["minimumLength"].NumberValue() != 12 {
+		t.Fatal("password policy missing")
+	}
 	if r["site-dns"]["proxied"].BoolValue() || r["certificate-dns"]["proxied"].BoolValue() {
 		t.Fatal("Cloudflare records must be DNS-only")
 	}

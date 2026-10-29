@@ -4,15 +4,15 @@
 
 - CloudFront serves `https://audit.apexfission.com` with an ACM certificate issued in `us-east-1`. Cloudflare hosts DNS-only CNAME records for the site and certificate validation. HTTP requests for the app redirect to HTTPS. Without a configured custom domain, the stack also supports the included `*.cloudfront.net` certificate.
 - Private S3 stores the Vite build, including WASM runtime files. Only this CloudFront distribution can read them through origin access control.
-- `/api/*` goes to API Gateway HTTP API and an ARM64 Go Lambda. `GET /api/health` returns JSON. `GET /api/cloud` reports whether cloud categorization is configured; `POST /api/classify` forwards a validated resized JPEG and prompt to hosted Gemma. These endpoints are public and throttled, not authenticated.
-- SmolVLM2 still downloads directly from Hugging Face and runs on the phone. In on-device mode, photos are never sent to AWS. Optional cloud mode sends prepared photos through AWS to Google after user consent. Moving hosts means the browser has a new origin/cache and will download the model again.
+- `/api/*` goes to API Gateway HTTP API and an ARM64 Go Lambda. `GET /api/health` returns JSON. `GET /api/cloud` reports whether cloud categorization is configured; `POST /api/classify` forwards a validated resized JPEG and prompt to hosted Gemma. Health, cloud availability, and `/api/auth-config` are public. Classification and `/api/sessions/*` require a valid Cognito access token when accounts are configured (the AWS stack enables them automatically).
+- SmolVLM2 still downloads directly from Hugging Face and runs on the phone. Signed-in sessions upload originals and prepared images to private AWS storage even when inference uses an on-device model. Local/static guest mode keeps photos on-device. Optional cloud mode sends prepared photos through AWS to Google after user consent. Moving hosts means the browser has a new origin/cache and will download the model again.
 - CloudWatch retains Lambda logs for 14 days. API traffic is throttled to 10 requests/second with a burst of 20. These limits are not a spending cap.
 
-No Docker, VPC, NAT gateway, always-on compute, database, GPU instance is required. AWS usage charges apply for storage, delivery, requests, Lambda, and logs. The model download itself is not served by AWS.
+No Docker, VPC, NAT gateway, always-on compute or GPU instance is required. Cognito manages accounts, DynamoDB stores session metadata with on-demand billing, and a separate private S3 bucket stores photos with server-side encryption. AWS usage charges apply for accounts, database, storage, delivery, requests, Lambda, and logs. The model download itself is not served by AWS.
 
 ## Prerequisites
 
-Install Node 22.12+ (or Node 24), Go 1.25+, Pulumi CLI, and AWS CLI v2. Configure AWS credentials for the target account, preferably using AWS SSO. The deployment identity needs permissions to manage S3, CloudFront, Lambda, API Gateway v2, CloudWatch Logs, ACM, and IAM roles/policies including `iam:PassRole`.
+Install Node 22.12+ (or Node 24), Go 1.25+, Pulumi CLI, and AWS CLI v2. Configure AWS credentials for the target account, preferably using AWS SSO. The deployment identity needs permissions to manage S3, CloudFront, Lambda, API Gateway v2, CloudWatch Logs, ACM, Cognito user pools and clients, DynamoDB tables, and IAM roles/policies including `iam:PassRole`.
 
 ## Guided deployment (recommended)
 
@@ -162,4 +162,16 @@ The wizard checks `GEMINI_API_KEY`, then the KMS-encrypted Pulumi `geminiApiKey`
 
 The frontend never receives the key. Pulumi passes it as a secret to the Lambda environment. Cloud mode has no model download and works without WebGPU. The user must consent before resized JPEGs and the editable prompt are sent to Google. Google's free-tier data may be used to improve its products. The app has no paid-model fallback; quota errors pause processing. AWS infrastructure charges still apply.
 
-The API validates JPEG dimensions, request size, prompt length and consent; provider error bodies are never exposed or logged. A same-origin browser check is not authentication. Anyone able to call the public endpoint can consume its shared quota; add user authorization before wider deployment. Uploads are not stored by this application. See the README for local development, key rotation and disabling cloud mode.
+The API validates JPEG dimensions, request size, prompt length and consent; provider error bodies are never exposed or logged. Cognito validates access tokens before classification or session access. Every session and photo lookup is partitioned by the authenticated user. Original and prepared photos are stored privately for signed-in sessions; Google receives only the prepared JPEG. See the README for local development, key rotation and disabling cloud mode.
+
+## Deploying accounts and shared photo sessions
+
+Run the normal wizard against the existing stack. Pulumi adds the Cognito user pool/public web client, a DynamoDB table, an encrypted private photo bucket with explicit browser CORS origins, and scoped Lambda permissions. No new access-token secret is needed: Cognito client identifiers are public configuration, and AWS credentials remain on the backend. The existing Google API-key prompt/reuse behavior is unchanged.
+
+The first visit redirects to `login.html`. Use `signup.html` to create an account, verify the emailed code, and log in. Test with two browsers/devices: select the same session, add a photo on each, wait for idle sync (up to 10 seconds), correct a category, export Word and PowerPoint on both, and remove a photo. Confirm a second account cannot see the first account's sessions. Verification email delivery and actual cross-device storage require a deployed AWS stack; local automated tests mock those services.
+
+Cognito uses its default email delivery for verification/reset messages; configure SES delivery in the user pool when production email volume requires it. Users can recover accounts using the login page's password-reset flow. Public self-signup is enabled. No account administration page or account deletion flow is included in this change.
+
+Photo storage is separate from the static website bucket, blocks all public access, and uses server-side AES256 encryption. The API signs five-minute PUT URLs and fifteen-minute GET URLs after checking session ownership. Uploaded originals are limited to 25 MiB; finalization checks original size and prepared-image size before making a photo available. Photos remain until explicitly removed. There is no automatic expiry policy. Back up metadata/photos if your retention requirements need it; S3/DynamoDB incur ongoing storage costs.
+
+`pulumi destroy` also removes the account pool and session table. The private photo bucket is not force-deleted: remove its stored photos before deliberately destroying it. Deleting the Cognito pool removes login identities. Do not destroy a production stack to update it.

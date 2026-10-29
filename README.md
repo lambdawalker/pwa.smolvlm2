@@ -1,6 +1,6 @@
 # Audit · SmolVLM2 PWA
 
-A mobile-first, installable photo categorizer and describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with a choice of five vision models. On-device models need no account or API key. Optional hosted Gemma categorization sends prepared photos to Google through the Go backend, only after explicit consent.
+A mobile-first, installable photo categorizer and describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with a choice of five vision models. The AWS app uses email/password accounts and private photo sessions shared between your devices. Static/local mode can still run on-device models without an account or API key. Hosted Gemma categorization sends prepared photos to Google through the Go backend after consent.
 
 ## Run
 
@@ -39,7 +39,7 @@ English prompts/output are intentional: this tiny model is primarily English. Ge
 - Mobile GPU drivers, available RAM, browser memory limits and model operators affect compatibility. A runtime error offers retry; close other tabs if memory is exhausted.
 - Browser-decodable JPEG/PNG/WebP and other images are accepted. HEIC/HEIF only works when the browser can decode it; otherwise the UI asks for JPEG or a screenshot.
 - Input file limit: 30 MB. Images are resized to a maximum 768-pixel edge, metadata is not sent to the model, and image splitting is disabled. Very large source photos can still require significant decoding memory.
-- No photos or descriptions are persisted. They remain in memory until removed/replaced or the app closes.
+- In static/local guest mode, photos and descriptions remain in memory. Signed-in AWS sessions persist originals, prepared images, categories, and descriptions in private storage for access from your other devices.
 
 ## Offline and installation
 
@@ -49,7 +49,7 @@ On Android, use the install button when offered or the browser menu. On iPhone, 
 
 ## Implementation
 
-- Vite + vanilla JavaScript, responsive CSS, no backend.
+- Vite + vanilla JavaScript, responsive CSS; Go Lambda API with Cognito accounts, DynamoDB session metadata, and private S3 photos on AWS.
 - Transformers.js 3.8.1 with `AutoModelForVision2Seq` and `AutoProcessor`.
 - Dedicated module worker; WebGPU fp16 vision/embeddings + q4f16 decoder when available, otherwise fp32 vision/embeddings + q4 decoder.
 - ONNX Runtime WASM/module files copied from the locked dependency at build time, served from the same origin.
@@ -173,3 +173,15 @@ Edit `config/categorization-defaults.yaml` to set interface and document default
 ### Security dependency pins
 
 Vite is pinned to 7.3.7. Scoped npm overrides select `image-size` 2.0.3 under PptxGenJS and `sharp` 0.35.5 under Transformers.js, addressing the current parser/native-library advisories without changing the app's PptxGenJS 4.0.1 or Transformers.js 3.8.1 APIs. Keep these overrides until upstream dependency ranges include patched versions and the overrides can be removed safely. Run `npm ci`, `npm audit`, `npm test`, and `npm run build:aws` after changing them. Tests cover Office export generation and actual image decoding/resizing through Transformers.js with the patched native dependency; they do not replace mobile model inference checks.
+
+## Accounts and sessions
+
+After deploying the updated AWS stack, open **Create account**, enter an email and password (12+ characters with uppercase, lowercase and a number), verify the emailed code, then log in. Password reset and resending verification codes are available on the login page. Sign in with the same account on your phone and laptop.
+
+Use **New session** to name a photo session, or select an existing session. Both devices can add photos to the same session. Originals and 384×384 prepared JPEGs upload directly to private S3 using short-lived signed URLs. Categories, descriptions and raw results are saved in DynamoDB. Idle pages refresh every 10 seconds and on focus; syncing pauses while uploading, categorizing or exporting. The same session can be exported on either device. A conflict asks you to refresh rather than overwriting another device's newer edits. Avoid categorizing the same pending photo on both devices simultaneously, which can duplicate inference requests.
+
+Word and PowerPoint export use borderless photo grids with small gutters, optional descriptions below each photo, and category section headings. PowerPoint, portrait orientation, 2 columns × 7 rows, and descriptions off are the defaults in `config/categorization-defaults.yaml`. The categorization prompt requests one sentence as short as possible.
+
+Access and refresh tokens stay in the tab's session storage; passwords are never stored by the app. Closing the tab requires logging in again. Signing out clears this tab's credentials. Signing in on another device does not sign out the first device. Removing or clearing photos removes them from the shared session and private storage, so the change appears on every device.
+
+Static hosting and the default local launcher have no accounts or persistent sessions. To exercise accounts locally against an existing AWS stack, set `AWS_PROFILE`, `AWS_REGION`, `COGNITO_POOL_ID`, `COGNITO_CLIENT_ID`, `SESSIONS_TABLE`, and `PHOTOS_BUCKET` before running `local.sh` / `local.bat`. The deployed photo bucket allows `http://localhost:5173` and `http://127.0.0.1:5173` as well as the configured HTTPS domain.
