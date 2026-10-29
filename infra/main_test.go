@@ -48,6 +48,12 @@ func TestCustomDomainInfrastructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := m.resources
+	if r["trash-cleanup"]["scheduleExpression"].StringValue() != "rate(5 minutes)" {
+		t.Fatal("missing trash retention schedule")
+	}
+	if r["trash-cleanup-invoke"]["principal"].StringValue() != "events.amazonaws.com" {
+		t.Fatal("cleanup must be invoked by EventBridge")
+	}
 	if !r["api"]["environment"].ContainsSecrets() {
 		t.Fatal("API key must remain a Pulumi secret")
 	}

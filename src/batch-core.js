@@ -18,12 +18,12 @@ export async function runBatch(items,classify,changed,cancelled,concurrency=1){
  const queue=items.filter(item=>item.state==='pending');
  async function consume(){
   while(!cancelled()&&!paused&&cursor<queue.length){
-   const item=queue[cursor++];item.state='processing';changed();
+   const item=queue[cursor++];if(item.shredded||item.state!=='pending')continue;item.state='processing';changed();
    try{
     const answer=await classify(item);
     if(cancelled()){item.state='pending';break;}
     item.rawOutput=String(answer);const result=parseResult(answer);item.category=result?.category??null;item.description=result?.description??'';item.state=item.category?'done':'review';item.error=item.category?'':'The model did not return a clear category. Choose one below.';
-   }catch(error){if(cancelled()){item.state='pending';break;}item.state='error';item.error=error.message;if(error.pauseBatch)paused=true;}
+   }catch(error){if(cancelled()){item.state='pending';break;}item.state=error.photoConflict?'review':'error';item.error=error.message;if(error.pauseBatch)paused=true;}
    changed();
   }
  }

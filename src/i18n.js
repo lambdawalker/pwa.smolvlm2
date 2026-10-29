@@ -31,3 +31,11 @@ Object.assign(ES,{'Syncing…':'Sincronizando…'});
 Object.assign(ES,{'Sessions':'Sesiones','Manage sessions':'Administrar sesiones','Your sessions':'Tus sesiones','Refresh':'Actualizar','Loading sessions…':'Cargando sesiones…','No sessions yet. Create one to add photos.':'No tienes sesiones. Crea una para agregar fotos.','Open':'Abrir','Rename':'Renombrar','Delete':'Eliminar','Rename session':'Renombrar sesión','Save':'Guardar','Delete session?':'¿Eliminar sesión?','Delete session':'Eliminar sesión','Deleting session…':'Eliminando sesión…','This permanently deletes the session, its photos, and results from all your devices.':'Esto elimina permanentemente la sesión, sus fotos y resultados de todos tus dispositivos.','Deletion incomplete. Retry to finish.':'Eliminación incompleta. Reintenta para terminar.','Retry deletion':'Reintentar eliminación','Shared sessions require the AWS account service.':'Las sesiones compartidas requieren el servicio de cuentas en AWS.','Session names must contain 1–80 characters.':'El nombre debe tener entre 1 y 80 caracteres.','This session or photo changed on another device. Refresh before retrying.':'Esta sesión o foto cambió en otro dispositivo. Actualiza antes de reintentar.'});
 
 Object.assign(ES,{'Waiting to upload':'En espera de carga','Uploading':'Subiendo','Uploaded':'Guardada en la nube','Upload failed':'Error de carga','Cloud sync':'Sincronización en la nube'});
+
+Object.assign(ES,{'Trash':'Papelera','Move to Trash':'Mover a la papelera','Shred permanently':'Destruir permanentemente','Automatically deleted after 2 days':'Se elimina automáticamente después de 2 días','Deleted on one device and edited on another. Choose a category to keep this photo.':'Se eliminó en un dispositivo y se editó en otro. Elige una categoría para conservar la foto.','Processed':'Procesadas','Categorized':'Clasificadas'});
+
+Object.assign(ES,{'Conflicting changes from another device. Choose a category to keep this photo.':'Hay cambios en conflicto desde otro dispositivo. Elige una categoría para conservar la foto.'});
+
+Object.assign(ES,{'Restore to category':'Restaurar a una categoría'});
+
+Object.assign(ES,{'Empty Trash permanently':'Vaciar la papelera permanentemente'});

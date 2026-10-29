@@ -112,7 +112,7 @@ test('document settings opens as a floating panel and closes independently',asyn
  e['close-document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);
  e['document-settings'].onclick();e['document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);
 });
-test('category tabs navigate and removing the final image drops its page',async()=>{
+test('category tabs navigate and removed photos move into a Trash page',async()=>{
  const {e,w}=await app();
  e.photos.onchange({target:{files:[{name:'room.jpg'},{name:'yard.jpg'}]}});const run=e.start.onclick();
  w[0].onmessage({data:{type:'ready'}});await tick();
@@ -124,7 +124,7 @@ test('category tabs navigate and removing the final image drops its page',async(
  e['category-tabs'].children[0].onclick();assert.match(pages[0].className,/active-category/);
  e['category-tabs'].children[1].onclick();assert.match(pages[1].className,/active-category/);
  const remove=pages[1].children[1].children[0].children.find(child=>child.className?.includes('remove-photo'));
- assert.equal(remove.disabled,false);await remove.onclick();assert.equal(e['category-tabs'].children.length,1);assert.match(e.summary.textContent,/1 of 1 processed/);assert.match(e.groups.children[0].className,/active-category/);
+ assert.equal(remove.disabled,false);await remove.onclick();assert.equal(e['category-tabs'].children.length,2);assert.ok(e['category-tabs'].children.some(tab=>tab.textContent.startsWith('Trash')));assert.match(e.summary.textContent,/1 of 1 processed/);assert.match(e.groups.children[0].className,/active-category/);
 });
 
 test('upload becomes the enabled cancel control while a batch runs',async()=>{
@@ -153,13 +153,13 @@ test('signed-in sessions sync uploads and classifications between two devices',a
   sessionAPI:async(path='',method='GET',body)=>{if(path==='')return {sessions:[{id:'session',name:'Site visit'}]};if(path==='/session')return {photos:records.map(p=>({...p}))};if(method==='DELETE'){const index=records.findIndex(p=>path.endsWith('/'+p.id));records.splice(index,1);return {deleted:true};}throw Error('unexpected '+path);},
   uploadPhoto:async(session,file)=>{const photo={id:String(++nextId),revision:2,state:'pending',mime:file.type,bytes:file.size,originalUrl:'original'};records.push(photo);return photo;},
   mergePhotos:async(existing,photos)=>photos.map(photo=>({...existing.find(i=>i.remoteId===photo.id),remoteId:photo.id,revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,file:{name:photo.id,type:photo.mime,size:photo.bytes},thumbnail:'data:photo',exportImage:'data:photo'})),
-  savePhoto:async(session,item,changes)=>{const photo=records.find(p=>p.id===item.remoteId);assert.equal(photo.revision,item.revision);Object.assign(photo,changes);photo.revision++;item.revision=photo.revision;return photo;}
+  savePhoto:async(session,item,changes)=>{const photo=records.find(p=>p.id===item.remoteId);assert.equal(photo.revision,item.revision);Object.assign(photo,changes);photo.revision++;Object.assign(item,photo);item.remoteId=photo.id;return photo;}
  };
  const phone=await app(false,[],true,async()=>' ',false,false,shared);assert.equal(phone.e['sessions-panel'].hidden,false);assert.equal(phone.e['session-select'].children[0].textContent,'Site visit');
  await phone.e.photos.onchange({target:{files:[{name:'phone.jpg',size:123,type:'image/jpeg'}]}});assert.equal(records.length,1);assert.equal(records[0].state,'pending');
  const laptop=await app(false,[],true,async()=>'{"category":"Outdoors","description":"A tree."}',false,false,shared);assert.match(laptop.e.summary.textContent,/0 of 1 processed/);await laptop.e.start.onclick();assert.equal(records[0].state,'done');assert.equal(records[0].description,'A tree.');assert.equal(laptop.e['export-document'].disabled,false);
  const reopenedPhone=await app(false,[],true,async()=>' ',false,false,shared);assert.match(reopenedPhone.e.summary.textContent,/1 of 1 processed \| 1 categorized/);assert.equal(reopenedPhone.e['export-document'].disabled,false);
- const remove=reopenedPhone.e.groups.children[0].children[1].children[0].children.find(c=>c.className?.includes('remove-photo'));await remove.onclick();assert.equal(records.length,0);
+ const remove=reopenedPhone.e.groups.children[0].children[1].children[0].children.find(c=>c.className?.includes('remove-photo'));await remove.onclick();assert.equal(records[0].state,'trash');const trash=reopenedPhone.e.groups.children.find(section=>section.children[0].textContent.startsWith('Trash'));await trash.children[1].children[0].children.find(c=>c.className?.includes('remove-photo')).onclick();assert.equal(records.length,0);
 });
 
 test('opening a session link selects it; remote renames and deletions update the picker',async()=>{
@@ -184,4 +184,21 @@ test('returning from the photo picker cannot start a sync that drops selected ph
 test('selected photos are visible while cloud upload is still pending',async()=>{
  let finish;const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>!path?{sessions:[{id:'s',name:'Visit'}]}:{photos:[]},mergePhotos:async()=>[],uploadPhoto:()=>new Promise(resolve=>{finish=resolve})};
  const {e}=await app(false,[],true,undefined,false,false,shared);const uploading=e.photos.onchange({target:{files:[{name:'photo.jpg',size:100,type:'image/jpeg'}]}});await tick();assert.equal(e.groups.children[0].children[1].children.length,1);const card=e.groups.children[0].children[1].children[0];assert.ok(card.children.some(child=>child.className==='open-original'));assert.ok(card.children.some(child=>child.textContent==='Uploading'));finish({id:'p',revision:2});await uploading;assert.ok(e.groups.children[0].children[1].children[0].children.some(child=>child.textContent==='Uploaded'));
+});
+
+test('a pending poll leaves controls enabled and accepts newly selected files',async()=>{
+ let delay=false,finish;const records=[];
+ const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>{if(!path){if(delay)await new Promise(resolve=>{finish=resolve});return {sessions:[{id:'s',name:'Visit'}]}}return {photos:records}},mergePhotos:async(existing)=>existing,uploadPhoto:async()=>({id:'p',revision:2})};
+ const {e,events}=await app(false,[],true,undefined,false,false,shared);delay=true;const poll=events.focus();await tick();assert.equal(e.pick.disabled,false);assert.equal(e['session-select'].disabled,false);assert.equal(e['new-session'].disabled,false);
+ await e.photos.onchange({target:{files:[{name:'new.jpg',size:50,type:'image/jpeg'}]}});assert.match(e.summary.textContent,/of 1 processed/);delay=false;finish();await poll;assert.match(e.summary.textContent,/of 1 processed/);
+});
+
+test('Trash uses a shredder and can restore a photo to its original category',async()=>{
+ const {e,w}=await app();e.photos.onchange({target:{files:[{name:'room.jpg'}]}});const run=e.start.onclick();w[0].onmessage({data:{type:'ready'}});await tick();w[0].onmessage({data:{type:'complete',text:'{"category":"Indoors","description":"A room."}'}});await run;
+ const card=()=>e.groups.children[0].children[1].children[0];await card().children.find(child=>child.className?.includes('remove-photo')).onclick();assert.match(e.groups.children[0].children[0].textContent,/Trash/);assert.equal(card().children[0].title,'Shred permanently');const select=card().children[1].children[0];assert.equal(select.value,'');select.value='Indoors';await select.onchange();assert.match(e.groups.children[0].children[0].textContent,/Indoors/);
+ await card().children.find(child=>child.className?.includes('remove-photo')).onclick();await card().children.find(child=>child.className?.includes('remove-photo')).onclick();assert.equal(e.groups.children.length,0);
+});
+test('an unchanged poll does not rebuild photo cards or disturb their controls',async()=>{
+ const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>!path?{sessions:[{id:'s',name:'Visit'}]}:{photos:[]},mergePhotos:async existing=>existing.length?existing:[{remoteId:'p',revision:1,state:'done',category:'Indoors',file:{},thumbnail:'data:photo',exportImage:'data:photo'}]};
+ const {e,events}=await app(false,[],true,undefined,false,false,shared);const section=e.groups.children[0];await events.focus();assert.equal(e.groups.children[0],section);assert.equal(e['session-select'].disabled,false);
 });

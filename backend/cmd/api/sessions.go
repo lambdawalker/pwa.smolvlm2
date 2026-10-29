@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,8 @@ type Session struct {
 	Deleting bool   `json:"deleting,omitempty"`
 }
 type Photo struct {
+	ExpiresAt   int64  `json:"expiresAt,omitempty"`
+	Conflict    bool   `json:"conflict,omitempty"`
 	ID          string `json:"id"`
 	Mime        string `json:"mime"`
 	Bytes       int64  `json:"bytes"`
@@ -144,10 +147,26 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		if e != nil {
 			return storeError(e)
 		}
+		hash := sha256.New()
+		hash.Write(data)
+		for _, record := range records {
+			hash.Write(record)
+		}
+		etag := `"` + hex.EncodeToString(hash.Sum(nil)) + `"`
+		match := req.Headers["if-none-match"]
+		if match == "" {
+			match = req.Headers["If-None-Match"]
+		}
+		if match == etag {
+			return events.APIGatewayV2HTTPResponse{StatusCode: 304, Headers: map[string]string{"etag": etag, "cache-control": "no-store"}}
+		}
 		photos := []Photo{}
 		for _, d := range records {
 			var p Photo
 			if json.Unmarshal(d, &p) != nil {
+				continue
+			}
+			if p.State == "shredded" {
 				continue
 			}
 			p.OriginalURL, e = store.URL(ctx, "GET", photoKey(user, sid, p.ID, "original"), p.Mime)
@@ -160,7 +179,9 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			}
 			photos = append(photos, p)
 		}
-		return apiJSON(200, map[string]any{"session": session, "photos": photos})
+		response := apiJSON(200, map[string]any{"session": session, "photos": photos})
+		response.Headers["etag"] = etag
+		return response
 	}
 	if len(path) == 4 && path[3] == "photos" && method == "POST" {
 		var p Photo
@@ -211,24 +232,34 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			return storeError(errors.New("invalid photo"))
 		}
 		if method == "DELETE" {
-			for _, k := range []string{"original", "prepared.jpg"} {
-				if e := store.RemoveObject(ctx, photoKey(user, sid, pid, k)); e != nil {
-					return storeError(e)
-				}
+			var options struct {
+				Permanent bool `json:"permanent"`
 			}
-			if e := store.Delete(ctx, owner, "PHOTO#"+pid); e != nil {
-				return storeError(e)
+			if len(body) > 0 && json.Unmarshal(body, &options) != nil {
+				return cloudError(400, "Invalid deletion request.")
+			}
+			if !options.Permanent && p.State != "uploading" && p.State != "shredded" {
+				return trashPhoto(ctx, store, user, session, p, Photo{Revision: p.Revision})
+			}
+			if err := shredPhoto(ctx, store, user, sid, p); err != nil {
+				return storeError(err)
 			}
 			return apiJSON(200, map[string]bool{"deleted": true})
+		}
+		if p.State == "shredded" {
+			return cloudError(404, "Photo permanently removed.")
 		}
 		if method == "PATCH" {
 			var in Photo
 			if json.Unmarshal(body, &in) != nil {
 				return cloudError(400, "Invalid photo update.")
 			}
-			if in.Revision != p.Revision {
-				return storeError(errConflict)
+			if in.State == "trash" {
+				return trashPhoto(ctx, store, user, session, p, in)
 			}
+			expected := p.Revision
+			conflict := in.Revision != p.Revision
+
 			switch in.State {
 			case "pending", "done", "review", "error":
 			default:
@@ -251,12 +282,18 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 				}
 			}
 			p.State = in.State
+			p.ExpiresAt = 0
+			p.Conflict = false
+			if conflict {
+				p.State = "review"
+				p.Conflict = true
+			}
 			p.Category = in.Category
 			p.Description = in.Description
 			p.RawOutput = in.RawOutput
 			p.Revision++
 			p.Updated = time.Now().UTC().Format(time.RFC3339Nano)
-			if e := saveSessionPhoto(ctx, store, user, session, p, in.Revision); e != nil {
+			if e := saveSessionPhoto(ctx, store, user, session, p, expected); e != nil {
 				return storeError(e)
 			}
 			return apiJSON(200, p)

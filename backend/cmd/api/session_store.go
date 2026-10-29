@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -16,6 +17,8 @@ import (
 var errConflict = errors.New("session conflict")
 
 type recordStore interface {
+	MarkShredded(context.Context, string, string, []byte) error
+	TrashCandidates(context.Context, int64) ([]trashRecord, error)
 	Get(context.Context, string, string) ([]byte, error)
 	List(context.Context, string, string) ([][]byte, error)
 	Put(context.Context, string, string, []byte, int, int) error
@@ -75,6 +78,7 @@ func (s *awsRecords) List(ctx context.Context, owner, prefix string) ([][]byte, 
 func (s *awsRecords) Put(ctx context.Context, owner, key string, data []byte, revision, expected int) error {
 	item := keys(owner, key)
 	item["data"] = av(string(data))
+	addPurgeTime(item, data)
 	item["revision"] = &dt.AttributeValueMemberN{Value: strconv.Itoa(revision)}
 	in := &dynamodb.PutItemInput{TableName: aws.String(os.Getenv("SESSIONS_TABLE")), Item: item, ConditionExpression: aws.String("attribute_not_exists(pk)")}
 	if expected > 0 {
@@ -125,6 +129,7 @@ func (s *awsRecords) PutPhoto(ctx context.Context, parentOwner, parentKey string
 	table := aws.String(os.Getenv("SESSIONS_TABLE"))
 	item := keys(owner, key)
 	item["data"] = av(string(data))
+	addPurgeTime(item, data)
 	item["revision"] = &dt.AttributeValueMemberN{Value: strconv.Itoa(revision)}
 	put := &dt.Put{TableName: table, Item: item, ConditionExpression: aws.String("attribute_not_exists(pk)")}
 	if expected > 0 {
@@ -145,4 +150,55 @@ func (s *awsRecords) PutPhoto(ctx context.Context, parentOwner, parentKey string
 		}
 	}
 	return err
+}
+
+func addPurgeTime(item map[string]dt.AttributeValue, data []byte) {
+	var p Photo
+	if json.Unmarshal(data, &p) == nil {
+		if p.State == "trash" && p.ExpiresAt > 0 {
+			item["purgeAt"] = &dt.AttributeValueMemberN{Value: strconv.FormatInt(p.ExpiresAt, 10)}
+		} else if p.State == "shredded" {
+			item["purgeAt"] = &dt.AttributeValueMemberN{Value: "0"}
+		}
+	}
+}
+func (s *awsRecords) MarkShredded(ctx context.Context, owner, key string, data []byte) error {
+	_, err := s.d.UpdateItem(ctx, &dynamodb.UpdateItemInput{TableName: aws.String(os.Getenv("SESSIONS_TABLE")), Key: keys(owner, key), UpdateExpression: aws.String("SET #d = :d, purgeAt = :zero ADD #r :one"), ConditionExpression: aws.String("attribute_exists(pk)"), ExpressionAttributeNames: map[string]string{"#d": "data", "#r": "revision"}, ExpressionAttributeValues: map[string]dt.AttributeValue{":d": av(string(data)), ":zero": &dt.AttributeValueMemberN{Value: "0"}, ":one": &dt.AttributeValueMemberN{Value: "1"}}})
+	var missing *dt.ConditionalCheckFailedException
+	if errors.As(err, &missing) {
+		return nil
+	}
+	return err
+}
+func (s *awsRecords) TrashCandidates(ctx context.Context, now int64) ([]trashRecord, error) {
+	out := []trashRecord{}
+	var start map[string]dt.AttributeValue
+	for {
+		v, err := s.d.Scan(ctx, &dynamodb.ScanInput{TableName: aws.String(os.Getenv("SESSIONS_TABLE")), Limit: aws.Int32(200), ExclusiveStartKey: start, FilterExpression: aws.String("purgeAt <= :now"), ExpressionAttributeValues: map[string]dt.AttributeValue{":now": &dt.AttributeValueMemberN{Value: strconv.FormatInt(now, 10)}}})
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range v.Items {
+			owner, ok := item["pk"].(*dt.AttributeValueMemberS)
+			if !ok {
+				continue
+			}
+			key, ok := item["sk"].(*dt.AttributeValueMemberS)
+			if !ok {
+				continue
+			}
+			data, ok := item["data"].(*dt.AttributeValueMemberS)
+			if !ok {
+				continue
+			}
+			var p Photo
+			if json.Unmarshal([]byte(data.Value), &p) == nil {
+				out = append(out, trashRecord{owner.Value, key.Value, p})
+			}
+		}
+		if len(v.LastEvaluatedKey) == 0 || len(out) >= 20 {
+			return out, nil
+		}
+		start = v.LastEvaluatedKey
+	}
 }

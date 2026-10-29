@@ -111,8 +111,8 @@ func TestPrivateSessions(t *testing.T) {
 	if r := call("PATCH", path, update); r.StatusCode != 200 {
 		t.Fatal(r)
 	}
-	if r := call("PATCH", path, update); r.StatusCode != 409 {
-		t.Fatal("stale overwrite", r)
+	if r := call("PATCH", path, update); r.StatusCode != 200 || !strings.Contains(r.Body, `"conflict":true`) {
+		t.Fatal("stale changes must require review", r)
 	}
 	user = "bob"
 	for _, method := range []string{"PATCH", "DELETE"} {
@@ -124,7 +124,7 @@ func TestPrivateSessions(t *testing.T) {
 	if r := call("GET", "/"+session.ID, nil); !strings.Contains(r.Body, "preparedUrl") {
 		t.Fatal(r)
 	}
-	if r := call("DELETE", path, nil); r.StatusCode != 200 {
+	if r := call("DELETE", path, map[string]bool{"permanent": true}); r.StatusCode != 200 {
 		t.Fatal(r)
 	}
 	if r := call("PATCH", path, update); r.StatusCode != 404 {
@@ -174,4 +174,27 @@ func (m *memoryRecords) PutPhoto(ctx context.Context, po, pk string, pr int, o, 
 		return errConflict
 	}
 	return m.Put(ctx, o, k, data, r, e)
+}
+
+func (m *memoryRecords) MarkShredded(ctx context.Context, o, k string, data []byte) error {
+	if m.data[o+"/"+k] == nil {
+		return nil
+	}
+	m.rev[o+"/"+k]++
+	m.data[o+"/"+k] = data
+	return nil
+}
+func (m *memoryRecords) TrashCandidates(ctx context.Context, now int64) ([]trashRecord, error) {
+	out := []trashRecord{}
+	for key, data := range m.data {
+		var p Photo
+		if json.Unmarshal(data, &p) != nil {
+			continue
+		}
+		if p.State == "shredded" || (p.State == "trash" && p.ExpiresAt <= now) {
+			parts := strings.SplitN(key, "/", 2)
+			out = append(out, trashRecord{parts[0], parts[1], p})
+		}
+	}
+	return out, nil
 }

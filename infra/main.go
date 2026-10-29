@@ -67,6 +67,18 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
+	rule, err := cloudwatch.NewEventRule(ctx, "trash-cleanup", &cloudwatch.EventRuleArgs{ScheduleExpression: pulumi.String("rate(5 minutes)")})
+	if err != nil {
+		return err
+	}
+	_, err = cloudwatch.NewEventTarget(ctx, "trash-cleanup-target", &cloudwatch.EventTargetArgs{Rule: rule.Name, Arn: fn.Arn, Input: pulumi.String(`{"rawPath":"/internal/purge-trash"}`)})
+	if err != nil {
+		return err
+	}
+	_, err = lambda.NewPermission(ctx, "trash-cleanup-invoke", &lambda.PermissionArgs{Action: pulumi.String("lambda:InvokeFunction"), Function: fn.Name, Principal: pulumi.String("events.amazonaws.com"), SourceArn: rule.Arn})
+	if err != nil {
+		return err
+	}
 	api, err := apigatewayv2.NewApi(ctx, "http-api", &apigatewayv2.ApiArgs{ProtocolType: pulumi.String("HTTP")})
 	if err != nil {
 		return err

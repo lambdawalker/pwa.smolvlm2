@@ -15,6 +15,17 @@ import (
 
 // Local inference stays in the browser; cloud requests are explicitly selected.
 func handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	if req.RawPath == "/internal/purge-trash" && req.RequestContext.HTTP.Method == "" {
+		store, err := storeFactory(ctx)
+		if err != nil {
+			return storeError(err), err
+		}
+		err = purgeTrash(ctx, store, time.Now().Unix())
+		if err != nil {
+			return storeError(err), err
+		}
+		return apiJSON(200, map[string]bool{"purged": true}), nil
+	}
 	if req.RawPath == "/api/auth-config" {
 		if req.RequestContext.HTTP.Method != "GET" {
 			return cloudError(405, "Use GET."), nil
