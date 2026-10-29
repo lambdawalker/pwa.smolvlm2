@@ -19,6 +19,7 @@ type recordStore interface {
 	Get(context.Context, string, string) ([]byte, error)
 	List(context.Context, string, string) ([][]byte, error)
 	Put(context.Context, string, string, []byte, int, int) error
+	PutPhoto(context.Context, string, string, int, string, string, []byte, int, int) error
 	Delete(context.Context, string, string) error
 	URL(context.Context, string, string, string) (string, error)
 	Size(context.Context, string) (int64, error)
@@ -116,4 +117,32 @@ func (s *awsRecords) Size(ctx context.Context, k string) (int64, error) {
 func (s *awsRecords) RemoveObject(ctx context.Context, k string) error {
 	_, e := s.s.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(os.Getenv("PHOTOS_BUCKET")), Key: aws.String(k)})
 	return e
+}
+
+// Checking the parent revision in the same transaction prevents an in-flight
+// upload/update from creating metadata after session deletion has started.
+func (s *awsRecords) PutPhoto(ctx context.Context, parentOwner, parentKey string, parentRevision int, owner, key string, data []byte, revision, expected int) error {
+	table := aws.String(os.Getenv("SESSIONS_TABLE"))
+	item := keys(owner, key)
+	item["data"] = av(string(data))
+	item["revision"] = &dt.AttributeValueMemberN{Value: strconv.Itoa(revision)}
+	put := &dt.Put{TableName: table, Item: item, ConditionExpression: aws.String("attribute_not_exists(pk)")}
+	if expected > 0 {
+		put.ConditionExpression = aws.String("#r = :r")
+		put.ExpressionAttributeNames = map[string]string{"#r": "revision"}
+		put.ExpressionAttributeValues = map[string]dt.AttributeValue{":r": &dt.AttributeValueMemberN{Value: strconv.Itoa(expected)}}
+	}
+	_, err := s.d.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: []dt.TransactWriteItem{
+		{ConditionCheck: &dt.ConditionCheck{TableName: table, Key: keys(parentOwner, parentKey), ConditionExpression: aws.String("#r = :r"), ExpressionAttributeNames: map[string]string{"#r": "revision"}, ExpressionAttributeValues: map[string]dt.AttributeValue{":r": &dt.AttributeValueMemberN{Value: strconv.Itoa(parentRevision)}}}},
+		{Put: put},
+	}})
+	var cancelled *dt.TransactionCanceledException
+	if errors.As(err, &cancelled) {
+		for _, reason := range cancelled.CancellationReasons {
+			if aws.ToString(reason.Code) == "ConditionalCheckFailed" {
+				return errConflict
+			}
+		}
+	}
+	return err
 }

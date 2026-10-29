@@ -18,9 +18,11 @@ const maxOriginalBytes = 25 << 20
 var resourceID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type Session struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Created string `json:"created"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Created  string `json:"created"`
+	Revision int    `json:"revision"`
+	Deleting bool   `json:"deleting,omitempty"`
 }
 type Photo struct {
 	ID          string `json:"id"`
@@ -54,7 +56,7 @@ func saveRecord(ctx context.Context, store recordStore, o, k string, v any, r, e
 }
 func storeError(e error) events.APIGatewayV2HTTPResponse {
 	if errors.Is(e, errConflict) {
-		return cloudError(409, "This photo changed on another device. Refresh the session before retrying.")
+		return cloudError(409, "This session or photo changed on another device. Refresh before retrying.")
 	}
 	return cloudError(503, "Session storage is temporarily unavailable. Please retry.")
 }
@@ -86,6 +88,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			for _, d := range records {
 				var v Session
 				if json.Unmarshal(d, &v) == nil {
+					v.Revision = sessionRevision(v)
 					sessions = append(sessions, v)
 				}
 			}
@@ -102,7 +105,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			if in.Name == "" || utf8.RuneCountInString(in.Name) > 80 {
 				return cloudError(400, "Session names must contain 1–80 characters.")
 			}
-			v := Session{newID(), in.Name, time.Now().UTC().Format(time.RFC3339Nano)}
+			v := Session{ID: newID(), Name: in.Name, Created: time.Now().UTC().Format(time.RFC3339Nano), Revision: 1}
 			if e := saveRecord(ctx, store, "USER#"+user, "SESSION#"+v.ID, v, 1, 0); e != nil {
 				return storeError(e)
 			}
@@ -124,6 +127,16 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 	var session Session
 	if json.Unmarshal(data, &session) != nil {
 		return storeError(errors.New("invalid session"))
+	}
+	session.Revision = sessionRevision(session)
+	if len(path) == 3 && method == "DELETE" {
+		return deleteSession(ctx, store, user, session)
+	}
+	if session.Deleting {
+		return cloudError(409, "This session is being deleted. Open Sessions to retry deletion.")
+	}
+	if len(path) == 3 && method == "PATCH" {
+		return renameSession(ctx, store, user, session, body)
 	}
 	owner := sessionOwner(user, sid)
 	if len(path) == 3 && method == "GET" {
@@ -179,7 +192,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		if e != nil {
 			return storeError(e)
 		}
-		if e := saveRecord(ctx, store, owner, "PHOTO#"+p.ID, p, 1, 0); e != nil {
+		if e := saveSessionPhoto(ctx, store, user, session, p, 0); e != nil {
 			return storeError(e)
 		}
 		return apiJSON(201, map[string]any{"photo": p, "originalUploadUrl": original, "preparedUploadUrl": prepared})
@@ -243,7 +256,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			p.RawOutput = in.RawOutput
 			p.Revision++
 			p.Updated = time.Now().UTC().Format(time.RFC3339Nano)
-			if e := saveRecord(ctx, store, owner, "PHOTO#"+pid, p, p.Revision, in.Revision); e != nil {
+			if e := saveSessionPhoto(ctx, store, user, session, p, in.Revision); e != nil {
 				return storeError(e)
 			}
 			return apiJSON(200, p)

@@ -168,3 +168,10 @@ func TestAccountClaimsRequireCognitoValidation(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
+
+func (m *memoryRecords) PutPhoto(ctx context.Context, po, pk string, pr int, o, k string, data []byte, r, e int) error {
+	if m.rev[po+"/"+pk] != pr {
+		return errConflict
+	}
+	return m.Put(ctx, o, k, data, r, e)
+}

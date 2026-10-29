@@ -35,7 +35,7 @@ let selectedModel=defaults.interface.model;
 let installed=[],activeItem=null,precision=null,cloudEnabled=false,cloudControllers=new Set(),batchPause='';
 const isCloud=()=>selectedModel===CLOUD_MODEL;
 const batchModel=key=>key===CLOUD_MODEL?CLOUD_INFO:getModel(key);
-const canRun=()=>accountReady&&(isCloud()?cloudEnabled&&$('cloud-consent').checked:supported&&installed.includes(selectedModel));
+const canRun=()=>accountReady&&(!shared||!!sessionId)&&(isCloud()?cloudEnabled&&$('cloud-consent').checked:supported&&installed.includes(selectedModel));
 $('show-photo-details').checked=readSetting('lens-photo-details',String(defaults.interface.showImageDetails))==='true';
 $('show-photo-details').onchange=()=>{saveSetting('lens-photo-details',String($('show-photo-details').checked));render();};
 $('export-type').value=defaults.document.type;
@@ -100,7 +100,7 @@ function render(){
  if($('new-session'))$('new-session').disabled=busy;$('image-concurrency').disabled=busy;
  $('export-document').disabled=exporting||busy||!items.some(item=>item.state==='done');
  $('cloud-consent').disabled=busy;$('batch-model').disabled=busy||(!installed.length&&!cloudEnabled);$('category-prompt').disabled=busy;$('reset-prompt').disabled=busy;
- $('pick').disabled=!accountReady||exporting||syncBusy||syncing;hideIcon('upload-icon',running);hideIcon('cancel-brain-icon',!running);$('pick').className='icon-button '+(running?'cancel-floating':'primary');$('pick').setAttribute('aria-label',t(running?'Cancel categorization':'Add photos'));$('pick').title=t(running?'Cancel categorization':'Add photos');$('clear').disabled=busy||!items.length;$('start').disabled=exporting||(!running&&(!canRun()||!items.some(i=>i.state==='pending')));hideIcon('brain-icon',running);hideIcon('stop-icon',!running);$('start').hidden=running||($('auto-categorize').checked&&!cancelled&&!batchPause);$('start').setAttribute('aria-label',running?'Stop':'Categorize');$('start').title=running?'Cancel categorization':'Categorize';$('start').className='icon-button '+(running?'cancel-floating':'primary');$('auto-categorize').disabled=busy;
+ $('pick').disabled=!accountReady||(shared&&!sessionId)||exporting||syncBusy||syncing;hideIcon('upload-icon',running);hideIcon('cancel-brain-icon',!running);$('pick').className='icon-button '+(running?'cancel-floating':'primary');$('pick').setAttribute('aria-label',t(running?'Cancel categorization':'Add photos'));$('pick').title=t(running?'Cancel categorization':'Add photos');$('clear').disabled=busy||!items.length;$('start').disabled=exporting||(!running&&(!canRun()||!items.some(i=>i.state==='pending')));hideIcon('brain-icon',running);hideIcon('stop-icon',!running);$('start').hidden=running||($('auto-categorize').checked&&!cancelled&&!batchPause);$('start').setAttribute('aria-label',running?'Stop':'Categorize');$('start').title=running?'Cancel categorization':'Categorize';$('start').className='icon-button '+(running?'cancel-floating':'primary');$('auto-categorize').disabled=busy;
  $('cancel').hidden=true;$('spinner').hidden=!busy;$('retry').hidden=busy||!items.some(i=>i.state==='error');$('reload').disabled=busy;
  const finished=items.filter(i=>['done','review','error'].includes(i.state)).length;
  const attention=items.filter(i=>['review','error'].includes(i.state)).length;
@@ -172,9 +172,9 @@ function request(type,extra={}){
 async function thumbnail(photo){
  const img=new Image();img.src=photo.url;await img.decode();const canvas=document.createElement('canvas');const scale=Math.min(1,180/photo.width,180/photo.height);canvas.width=Math.max(1,Math.round(photo.width*scale));canvas.height=Math.max(1,Math.round(photo.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.7);
 }
-$('pick').onclick=()=>{if(!accountReady||syncBusy||syncing||exporting)return;if(running){cancelled=true;stopWorker();status('Stopping…');return;}if(!exporting)$('photos').click();};
+$('pick').onclick=()=>{if(!accountReady||(shared&&!sessionId)||syncBusy||syncing||exporting)return;if(running){cancelled=true;stopWorker();status('Stopping…');return;}if(!exporting)$('photos').click();};
 $('photos').onchange=async event=>{
- if(!accountReady||syncBusy||syncing||exporting||running)return;
+ if(!accountReady||(shared&&!sessionId)||syncBusy||syncing||exporting||running)return;
  const files=[...event.target.files];event.target.value='';
  if(shared){await mutateSession(async()=>{for(const file of files){const photo=await preparePhoto(file,{centerCrop:true});const saved=await uploadPhoto(sessionId,file,photo);items.push({file,state:'pending',remoteId:saved.id,revision:saved.revision,exportImage:photo.url,thumbnail:photo.url,info:photo.info});render();}});}
  else for(const file of files)items.push({file,state:'pending'});
@@ -248,16 +248,31 @@ $('export-document').onclick=async()=>{
  finally{exporting=false;render();}
 };
 
-async function refreshSession(){if(!shared||!sessionId||running||exporting||syncBusy||syncing)return;const requestedSession=sessionId;syncing=true;$('session-status').textContent='Syncing…';render();try{const listing=await sessionAPI();syncSessionChoices(listing.sessions);const data=await sessionAPI('/'+requestedSession);const merged=await mergePhotos(items,data.photos);if(!shared||sessionId!==requestedSession)return;items=merged;$('session-status').textContent='Synced';render();}catch(e){$('session-status').textContent=e.message;}finally{syncing=false;render();}}
+async function refreshSession(){
+ if(!shared||running||exporting||syncBusy||syncing)return;
+ syncing=true;$('session-status').textContent='Syncing…';render();
+ try{const listing=await sessionAPI();syncSessionChoices(listing.sessions);if(!sessionId){items=[];$('session-status').textContent='No sessions yet. Create one to add photos.';return;}
+ const requestedSession=sessionId,data=await sessionAPI('/'+requestedSession);const merged=await mergePhotos(items,data.photos);if(!shared||sessionId!==requestedSession)return;items=merged;$('session-status').textContent='Synced';
+ }catch(e){$('session-status').textContent=e.message;}finally{syncing=false;render();}
+}
 async function loadSession(id){if(running||exporting||syncBusy||syncing)return;sessionId=id;saveSetting('audit-session',id);items=[];await refreshSession();}
 async function initSharedSessions(){
  if(typeof authConfig!=='function')return;
  try{const config=await authConfig();if(!config.enabled){accountReady=true;return;}if(!credentials()){location.replace('./login.html');return;}shared=true;$('sessions-panel').hidden=false;$('sign-out').hidden=false;$('sign-out').onclick=()=>{stopWorker();shared=false;accountReady=false;items=[];closeOriginal();if(exportURL){URL.revokeObjectURL(exportURL);exportURL=null;}render();signOut();};
- const listing=await sessionAPI();const sessions=listing.sessions;
- if(!sessions.length)sessions.push(await sessionAPI('','POST',{name:'Session '+new Date().toLocaleDateString()}));
+ const listing=await sessionAPI();const sessions=listing.sessions.filter(session=>!session.deleting);
  function options(){ $('session-select').replaceChildren();for(const session of sessions){const option=document.createElement('option');option.value=session.id;option.textContent=session.name;$('session-select').append(option);}}
- syncSessionChoices=next=>{const selected=$('session-select').value;if(next.map(s=>s.id+s.name).join('|')===sessions.map(s=>s.id+s.name).join('|'))return;sessions.splice(0,sessions.length,...next);options();$('session-select').value=selected;};
- options();const saved=readSetting('audit-session','');$('session-select').value=sessions.some(s=>s.id===saved)?saved:sessions[0].id;await loadSession($('session-select').value);
+ syncSessionChoices=next=>{
+ next=next.filter(session=>!session.deleting);
+ const selected=$('session-select').value;
+ if(next.map(s=>s.id+s.name).join('|')===sessions.map(s=>s.id+s.name).join('|'))return;
+ sessions.splice(0,sessions.length,...next);options();
+ if(next.some(session=>session.id===selected))$('session-select').value=selected;
+ else {sessionId=next[0]?.id||null;$('session-select').value=sessionId||'';items=[];saveSetting('audit-session',sessionId||'');}
+ };
+ options();const requested=window.location?.href?new URL(window.location.href).searchParams.get('session'):null;
+ const saved=requested||readSetting('audit-session','');$('session-select').value=sessions.some(s=>s.id===saved)?saved:sessions[0]?.id||'';
+ if($('session-select').value)await loadSession($('session-select').value);else $('session-status').textContent='No sessions yet. Create one to add photos.';
+ if(requested&&window.history?.replaceState){const url=new URL(window.location.href);url.searchParams.delete('session');window.history.replaceState(null,'',url);}
  $('session-select').onchange=()=>loadSession($('session-select').value);
  $('new-session').onclick=()=>{$('session-dialog').showModal();};
  $('cancel-session').onclick=()=>$('session-dialog').close();

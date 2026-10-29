@@ -185,3 +185,9 @@ Word and PowerPoint export use borderless photo grids with small gutters, option
 Access and refresh tokens stay in the tab's session storage; passwords are never stored by the app. Closing the tab requires logging in again. Signing out clears this tab's credentials. Signing in on another device does not sign out the first device. Removing or clearing photos removes them from the shared session and private storage, so the change appears on every device.
 
 Static hosting and the default local launcher have no accounts or persistent sessions. To exercise accounts locally against an existing AWS stack, set `AWS_PROFILE`, `AWS_REGION`, `COGNITO_POOL_ID`, `COGNITO_CLIENT_ID`, `SESSIONS_TABLE`, and `PHOTOS_BUCKET` before running `local.sh` / `local.bat`. The deployed photo bucket allows `http://localhost:5173` and `http://127.0.0.1:5173` as well as the configured HTTPS domain.
+
+### Manage sessions
+
+Open **Sessions** from the hamburger menu or **Manage sessions** next to the session picker. Create a named session, rename it, or choose **Open** to categorize its photos. Deleting requires confirmation and removes the session's original photos, prepared photos, and results from all devices. Large sessions are deleted in batches automatically. An interrupted deletion appears as **Retry deletion**; open/rename and new uploads are blocked until cleanup finishes. Other sessions and other users' data are unaffected.
+
+Sessions created before this update remain supported. Rename uses revision checks so an older screen cannot overwrite a newer name. The session picker refreshes names, removes deleted sessions, and switches to another available session when needed.
