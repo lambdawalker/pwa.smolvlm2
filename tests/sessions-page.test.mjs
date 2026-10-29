@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {deleteSharedSession} from '../src/session-sync.js';
-const source=readFileSync(new URL('../src/sessions-page.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace('export async function','async function').replace("if(typeof document!=='undefined')startSessionsPage({document,location});",'globalThis.start=startSessionsPage;');
+const prepareSource=text=>text.replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replace('export async function','async function').replace("if(typeof document!=='undefined')startSessionsPage({document,location});",'globalThis.start=startSessionsPage;');
+const rawSource=readFileSync(new URL('../src/sessions-page.js',import.meta.url),'utf8');
+const source=prepareSource(rawSource);
+for(const ending of ['\n','\r\n'])test('session harness supports '+JSON.stringify(ending),()=>{const context={};vm.runInNewContext(prepareSource(rawSource.replace(/\r\n/g,'\n').replace(/\n/g,ending)),context);assert.equal(typeof context.start,'function');});
 const submit={preventDefault(){}};
 async function app({enabled=true,loggedIn=true}={}){
  const element=()=>({children:[],value:'',append(...items){this.children.push(...items)},replaceChildren(){this.children=[]},setAttribute(k,v){this[k]=v},removeAttribute(k){delete this[k]},showModal(){this.open=true},close(){this.open=false},focus(){}});
