@@ -31,7 +31,7 @@ var storeFactory = func(ctx context.Context) (recordStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &awsRecords{d: dynamodb.NewFromConfig(cfg), s: s3.NewFromConfig(cfg)}, nil
+	return &awsRecords{d: dynamodb.NewFromConfig(cfg), s: s3.NewFromConfig(cfg, func(o *s3.Options) { o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired })}, nil
 }
 
 type awsRecords struct {

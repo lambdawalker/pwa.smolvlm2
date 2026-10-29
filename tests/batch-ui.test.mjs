@@ -174,3 +174,9 @@ test('an empty account waits for an explicit session instead of recreating a del
  const calls=[];const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async(path='',method='GET')=>{calls.push(method);return {sessions:[]}},mergePhotos:async()=>[]};
  const {e}=await app(false,[],true,undefined,false,false,shared);assert.equal(e.pick.disabled,true);assert.equal(e['session-select'].children.length,0);assert.ok(calls.every(method=>method==='GET'));assert.match(e['session-status'].textContent,/Create one/);
 });
+
+test('returning from the photo picker cannot start a sync that drops selected photos',async()=>{
+ let listingCalls=0,uploads=0;
+ const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>{if(!path){listingCalls++;return {sessions:[{id:'s',name:'Visit'}]}}return {photos:[]}},mergePhotos:async()=>[],uploadPhoto:async()=>{uploads++;return {id:'p',revision:2}}};
+ const {e,events}=await app(false,[],true,undefined,false,false,shared);const before=listingCalls;e.pick.onclick();await events.focus();assert.equal(listingCalls,before);await e.photos.onchange({target:{files:[{name:'photo.jpg',size:100,type:'image/jpeg'}]}});assert.equal(uploads,1);assert.match(e.summary.textContent,/of 1 processed/);
+});

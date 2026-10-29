@@ -27,6 +27,7 @@ async function openOriginal(item){closeOriginal();try{const file=item.originalUr
 window.addEventListener('pagehide',closeOriginal);
 const downloads=createDownloadView($('file-downloads'));
 let exporting=false,exportURL=null;
+let pickerOpen=false;
 let shared=false,sessionId=null,syncBusy=false,syncing=false,syncSessionChoices=()=>{},accountReady=typeof authConfig!=='function';
 let items=[],worker=null,pending=null,running=false,supported=false,cancelled=false,installPrompt;
 const readSetting=(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}};
@@ -172,15 +173,17 @@ function request(type,extra={}){
 async function thumbnail(photo){
  const img=new Image();img.src=photo.url;await img.decode();const canvas=document.createElement('canvas');const scale=Math.min(1,180/photo.width,180/photo.height);canvas.width=Math.max(1,Math.round(photo.width*scale));canvas.height=Math.max(1,Math.round(photo.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.7);
 }
-$('pick').onclick=()=>{if(!accountReady||(shared&&!sessionId)||syncBusy||syncing||exporting)return;if(running){cancelled=true;stopWorker();status('Stopping…');return;}if(!exporting)$('photos').click();};
+$('pick').onclick=()=>{if(!accountReady||(shared&&!sessionId)||syncBusy||syncing||exporting)return;if(running){cancelled=true;stopWorker();status('Stopping…');return;}if(!exporting){pickerOpen=true;$('photos').click();}};
+$('photos').addEventListener('cancel',()=>{pickerOpen=false;});
 $('photos').onchange=async event=>{
+ pickerOpen=false;
  if(!accountReady||(shared&&!sessionId)||syncBusy||syncing||exporting||running)return;
  const files=[...event.target.files];event.target.value='';
- if(shared){await mutateSession(async()=>{for(const file of files){const photo=await preparePhoto(file,{centerCrop:true});const saved=await uploadPhoto(sessionId,file,photo);items.push({file,state:'pending',remoteId:saved.id,revision:saved.revision,exportImage:photo.url,thumbnail:photo.url,info:photo.info});render();}});}
+ if(shared){await mutateSession(async()=>{for(const file of files){status('Uploading photos…',true);logEvent('photo-upload-start',{bytes:file.size,mime:file.type});const photo=await preparePhoto(file,{centerCrop:true});const saved=await uploadPhoto(sessionId,file,photo);logEvent('photo-upload-complete',{id:saved.id});items.push({file,state:'pending',remoteId:saved.id,revision:saved.revision,exportImage:photo.url,thumbnail:photo.url,info:photo.info});render();}});}
  else for(const file of files)items.push({file,state:'pending'});
  cancelled=false;render();if($('auto-categorize').checked&&canRun())$('start').click();
 };
-async function mutateSession(action){if(running||exporting||syncBusy||syncing)return;syncBusy=true;render();try{await action();}catch(e){status(e.message,true);}finally{syncBusy=false;render();}}
+async function mutateSession(action){if(running||exporting||syncBusy||syncing)return;syncBusy=true;render();try{await action();}catch(e){logEvent('session-operation-error',{message:e.message,status:e.status||0});status(e.message,true);}finally{syncBusy=false;render();}}
 async function persistAnswer(item,answer){if(item.remoteId){const parsed=parseResult(answer);await savePhoto(sessionId,item,{state:parsed?'done':'review',category:parsed?.category||'',description:parsed?.description||'',rawOutput:String(answer).slice(0,8192)});}return answer;}
 $('start').onclick=async()=>{
  if(running){cancelled=true;stopWorker();status('Stopping…');return;}
@@ -249,7 +252,7 @@ $('export-document').onclick=async()=>{
 };
 
 async function refreshSession(){
- if(!shared||running||exporting||syncBusy||syncing)return;
+ if(!shared||pickerOpen||running||exporting||syncBusy||syncing)return;
  syncing=true;$('session-status').textContent='Syncing…';render();
  try{const listing=await sessionAPI();syncSessionChoices(listing.sessions);if(!sessionId){items=[];$('session-status').textContent='No sessions yet. Create one to add photos.';return;}
  const requestedSession=sessionId,data=await sessionAPI('/'+requestedSession);const merged=await mergePhotos(items,data.photos);if(!shared||sessionId!==requestedSession)return;items=merged;$('session-status').textContent='Synced';
