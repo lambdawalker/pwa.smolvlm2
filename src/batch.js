@@ -23,7 +23,7 @@ $('original-viewer').onclick=event=>{if(event.target===$('original-viewer'))$('o
 async function openOriginal(item){closeOriginal();try{const file=item.originalUrl?await (async()=>{const r=await fetch(item.originalUrl,{cache:'no-store'});if(!r.ok)throw Error('Could not load original photo.');return r.blob();})():item.file;originalURL=URL.createObjectURL(file);$('original-image').src=originalURL;$('original-image').alt=item.description||'Original photo';$('original-viewer').showModal();}catch(e){status(e.message,true);}}
 window.addEventListener('pagehide',closeOriginal);
 let exporting=false,exportURL=null;
-let pickerOpen=false,writeOperations=0,syncError='';
+let pickerOpen=false,writeOperations=0,syncError='',retrying=false;
 let shared=false,sessionId=null,syncBusy=false,syncing=false,syncSessionChoices=()=>{},accountReady=typeof authConfig!=='function';
 let items=[],running=false,cancelled=false,installPrompt;
 const readSetting=(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}};
@@ -95,7 +95,7 @@ function render(){
  $('export-document').disabled=exporting||busy||!items.some(item=>item.state==='done');
  $('cloud-consent').disabled=busy;$('category-prompt').disabled=busy;$('reset-prompt').disabled=busy;
  $('pick').disabled=!accountReady||(shared&&!sessionId)||exporting;hideIcon('upload-icon',running);hideIcon('cancel-brain-icon',!running);$('pick').className='icon-button '+(running?'cancel-floating':'primary');$('pick').setAttribute('aria-label',t(running?'Cancel categorization':'Add photos'));$('pick').title=t(running?'Cancel categorization':'Add photos');$('clear').disabled=busy||!items.length;$('start').disabled=exporting||(!running&&(!canRun()||!items.some(i=>i.state==='pending')));hideIcon('brain-icon',running);hideIcon('stop-icon',!running);$('start').hidden=running||($('auto-categorize').checked&&!cancelled&&!batchPause);$('start').setAttribute('aria-label',running?'Stop':'Categorize');$('start').title=running?'Cancel categorization':'Categorize';$('start').className='icon-button '+(running?'cancel-floating':'primary');$('auto-categorize').disabled=busy;
- $('cancel').hidden=true;$('spinner').hidden=true;$('retry').hidden=busy||!items.some(i=>i.state==='error');$('reload').disabled=busy;
+ $('cancel').hidden=true;$('spinner').hidden=true;$('retry').hidden=!items.some(i=>i.state==='error');$('retry').disabled=busy||retrying;$('restart-categorization').hidden=!items.some(i=>['done','review','error'].includes(i.state));$('restart-categorization').disabled=busy||retrying||!canRun();$('reload').disabled=busy;
  const finished=activeItems.filter(i=>['done','review','error'].includes(i.state)).length;
  const attention=items.filter(i=>['review','error'].includes(i.state)).length;
  $('summary').textContent=`${finished} of ${activeItems.length} processed | ${items.filter(i=>i.state==='done').length} categorized | `;
@@ -154,17 +154,23 @@ $('photos').onchange=async event=>{
  if(shared){
  const uploadSessionId=sessionId;
  const added=files.map(file=>({file,state:'uploading',uploadState:'Waiting to upload',thumbnail:URL.createObjectURL(file)}));items.push(...added);render();
- await mutateSession(async()=>{for(const item of added){
-  try{item.uploadState='Uploading';render();logEvent('photo-upload-start',{bytes:item.file.size,mime:item.file.type});
-   const photo=await preparePhoto(item.file,{centerCrop:true});item.exportImage=photo.url;item.info=photo.info;URL.revokeObjectURL(item.thumbnail);item.thumbnail=photo.url;render();
-   const saved=await uploadPhoto(uploadSessionId,item.file,photo);item.remoteId=saved.id;item.revision=saved.revision;item.state='pending';item.uploadState='Uploaded';logEvent('photo-upload-complete',{id:saved.id});
-  }catch(error){item.state='error';item.uploadFailed=true;item.uploadState='Upload failed';item.error=error.message;logEvent('photo-upload-error',{message:error.message,status:error.status||0});}
-  render();
- }});
+ await uploadItems(added,uploadSessionId);
  }else for(const file of files)items.push({file,state:'pending',thumbnail:URL.createObjectURL(file)});
 
  cancelled=false;render();if(!running&&$('auto-categorize').checked&&canRun())$('start').click();
 };
+async function uploadItems(photos,targetSession){
+ await mutateSession(async()=>{for(const item of photos){
+  if(item.shredded||item.state==='trash')continue;
+  item.state='uploading';item.uploadFailed=false;item.uploadState='Uploading';item.error='';render();
+  try{logEvent('photo-upload-start',{bytes:item.file.size,mime:item.file.type,retry:!!item.info});
+   const photo=await preparePhoto(item.file,{centerCrop:true});item.exportImage=photo.url;item.info=photo.info;
+   if(item.thumbnail?.startsWith('blob:'))URL.revokeObjectURL(item.thumbnail);item.thumbnail=photo.url;render();
+   const saved=await uploadPhoto(targetSession,item.file,photo);item.remoteId=saved.id;item.revision=saved.revision;item.state='pending';item.uploadState='Uploaded';logEvent('photo-upload-complete',{id:saved.id});
+  }catch(error){item.state='error';item.uploadFailed=true;item.uploadState='Upload failed';item.error=error.message;logEvent('photo-upload-error',{message:error.message,status:error.status||0});}
+  render();
+ }});
+}
 async function mutateSession(action){if(exporting)return;writeOperations++;syncBusy=true;render();try{const operation=action();render();await operation;}catch(e){logEvent('session-operation-error',{message:e.message,status:e.status||0});status(e.message,true);}finally{writeOperations--;syncBusy=writeOperations>0;render();}}
 async function persistAnswer(item,answer){if(item.remoteId){const parsed=parseResult(answer);const saved=await savePhoto(sessionId,item,{state:parsed?'done':'review',category:parsed?.category||'',description:parsed?.description||'',rawOutput:String(answer).slice(0,8192)});if(item.shredded||saved?.conflict){const e=Error('Photo removed or changed on another device.');e.photoConflict=true;throw e;}}return answer;}
 $('start').onclick=async()=>{
@@ -173,7 +179,7 @@ $('start').onclick=async()=>{
  let prompt;try{prompt=languagePrompt(resolvePrompt('custom',$('category-prompt').value))+' Keep the description to one sentence, as short as possible.';}catch(error){status(error.message,true);return;}
  running=true;cancelled=false;batchPause='';render();status('Preparing cloud categorization…');
  try{
-  precision=null;logEvent('cloud-model',{model:'google.gemma-4-e2b',precision:'AWS-managed'});
+  logEvent('cloud-model',{model:'google.gemma-4-e2b',precision:'AWS-managed'});
   if(cancelled)return;
   const promptHash=await sha256(prompt);$('prompt-id').textContent=`Prompt ID: ${promptHash.slice(0,HASH_LABEL_LENGTH)}`;logEvent('prompt-fingerprint',{sha256:promptHash,characters:prompt.length,model:selectedModel});
   if(cancelled)return;
@@ -202,7 +208,24 @@ $('start').onclick=async()=>{
  finally{running=false;render();}
 };
 $('cancel').onclick=()=>{cancelled=true;stopProcessing();status('Stopping…');};
-$('retry').onclick=async()=>{const failed=items.filter(item=>item.uploadFailed&&item.state==='error');if(failed.length){items=items.filter(item=>!failed.includes(item));for(const item of failed)URL.revokeObjectURL(item.thumbnail);await $('photos').onchange({target:{files:failed.map(item=>item.file),value:''}});return;}for(const item of items)if(item.state==='error'&&!item.uploadFailed){item.state='pending';item.error='';}render();$('start').click();};
+async function recoverPhotos(restart=false){
+ if(running||exporting||retrying||!accountReady||(shared&&!sessionId))return;
+ const targetSession=sessionId;retrying=true;render();
+ try{
+  const failedUploads=items.filter(item=>item.uploadFailed&&item.state==='error');
+  if(failedUploads.length)await uploadItems(failedUploads,targetSession);
+  if(sessionId!==targetSession)return;
+  for(const item of items){
+   if(item.shredded||item.uploadFailed||item.conflict||item.dirty||!['error',...(restart?['done','review']:[])].includes(item.state))continue;
+   item.state='pending';item.reprocess=true;item.error='';
+  }
+  cancelled=false;batchPause='';render();
+  logEvent(restart?'categorization-restart':'photos-retry',{pending:items.filter(i=>i.state==='pending').length});
+  if(canRun()&&items.some(item=>item.state==='pending'))await $('start').onclick();
+ }finally{retrying=false;render();}
+}
+$('retry').onclick=()=>recoverPhotos();
+$('restart-categorization').onclick=()=>recoverPhotos(true);
 $('clear').onclick=()=>mutateSession(async()=>{const clearSession=sessionId,shred=activeCategory==='Trash';for(const item of [...items]){
  if(shred){if(item.state!=='trash')continue;if(item.remoteId){try{await sessionAPI(`/${clearSession}/photos/${item.remoteId}`,'DELETE',{permanent:true});}catch(error){if(error.status!==404)throw error;}}item.shredded=true;}
  else {if(item.state==='trash'||item.shredded||item.state==='uploading')continue;if(item.remoteId)await savePhoto(clearSession,item,{state:'trash'});else{item.state='trash';item.expiresAt=Date.now()/1000+172800;}}

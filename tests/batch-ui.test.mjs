@@ -16,7 +16,7 @@ async function app(supported=true,installed=[],cloud=true,cloudClassify=async()=
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const originalFiles=[],revoked=[];class PhotoURL extends URL{static createObjectURL(file){originalFiles.push(file);return 'blob:original';}static revokeObjectURL(url){revoked.push(url);}}
  const events={};const workers=[];class Worker{constructor(){throw Error('Local model workers are no longer supported');}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext(source,{...(shared||{}),setInterval:()=>0,parseResult,defaults,getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{location:shared?.pageLocation,matchMedia:()=>({matches:mobile}),addEventListener(name,handler){events[name]=handler;}},registerSW:()=>()=>{}});
+ vm.runInNewContext('"use strict";\n'+source,{...(shared||{}),setInterval:()=>0,parseResult,defaults,getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{location:shared?.pageLocation,matchMedia:()=>({matches:mobile}),addEventListener(name,handler){events[name]=handler;}},registerSW:()=>()=>{}});
  await tick();elements['image-concurrency'].value='1';if(!auto)elements['auto-categorize'].checked=false;return {e:elements,w:workers,originalFiles,revoked,events};
 }
 test('cloud quota failure pauses batch and keeps remaining photos pending',async()=>{
@@ -107,4 +107,31 @@ test('cloud image preview opens the original and Trash can restore or shred it',
 test('cloud category carousel wraps on mobile and vertical scrolling does not change categories',async()=>{
  let i=0;const {e}=await app(false,[],true,async()=>JSON.stringify({category:i++?'Outdoors':'Indoors',description:'A scene.'}),false,true);await e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});await e.start.onclick();
  const gesture=(x,y)=>{e['categorize-page'].events.touchstart({touches:[{clientX:150,clientY:100}],target:{closest:()=>null}});e['categorize-page'].events.touchend({changedTouches:[{clientX:x,clientY:y}]})};const active=()=>e.groups.children.findIndex(p=>p.className.includes('active-category'));assert.equal(active(),0);gesture(40,105);assert.equal(active(),1);gesture(40,105);assert.equal(active(),0);gesture(155,260);assert.equal(active(),0);
+});
+
+test('retry keeps failed upload cards in place and categorizes recovered photos in manual mode',async()=>{
+ let attempts=0,calls=0,finish;
+ const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>!path?{sessions:[{id:'s',name:'Visit'}]}:{photos:[]},mergePhotos:async existing=>existing,
+ uploadPhoto:async()=>{if(++attempts===1)throw Error('Network unavailable');return new Promise(resolve=>{finish=()=>resolve({id:'p',revision:2});});},savePhoto:async(session,item,changes)=>{Object.assign(item,changes);return item;}};
+ const {e,originalFiles}=await app(false,[],true,async()=>{calls++;return '{"category":"Outdoors","description":"A tree."}';},false,false,shared);
+ await e.photos.onchange({target:{files:[{name:'photo.jpg',type:'image/jpeg',size:10}]}});
+ assert.equal(e.retry.hidden,false);const retry=e.retry.onclick();await tick();
+ assert.equal(originalFiles.length,1,'retry must preserve the selected photo, not re-add it');
+ assert.equal(e.retry.disabled,true);finish();await retry;
+ assert.equal(calls,1);assert.match(e.summary.textContent,/1 of 1 processed \| 1 categorized/);assert.equal(e.retry.hidden,true);
+});
+
+test('restart categorization reruns completed photos and skips Trash',async()=>{
+ let calls=0;const {e}=await app(false,[],true,async()=>{calls++;return '{"category":"Indoors","description":"A room."}';});
+ await e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'}]}});await e.start.onclick();
+ const card=e.groups.children[0].children[1].children[0];await card.children.find(c=>c.className?.includes('remove-photo')).onclick();
+ assert.equal(e['restart-categorization']?.hidden,false);await e['restart-categorization'].onclick();
+ assert.equal(calls,3);assert.match(e.summary.textContent,/1 of 1 processed \| 1 categorized/);
+});
+
+
+test('retry resumes failed categorization without repeating completed photos',async()=>{
+ let calls=0;const {e}=await app(false,[],true,async()=>{calls++;if(calls===2)throw Error('Temporary provider failure');return '{"category":"Indoors","description":"A room."}';});
+ await e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'},{name:'c.jpg'}]}});await e.start.onclick();
+ assert.equal(calls,2);await e.retry.onclick();assert.equal(calls,4);assert.match(e.summary.textContent,/3 of 3 processed \| 3 categorized/);
 });

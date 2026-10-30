@@ -59,3 +59,9 @@ test('categorization skips queued photos moved to Trash or shredded by backgroun
  const {runBatch}=await import('../src/batch-core.js');const items=[{state:'pending'},{state:'pending'},{state:'pending'}];let calls=0;
  await runBatch(items,async()=>{calls++;items[1].state='trash';items[2].shredded=true;return '{"category":"Indoors","description":"A room."}'},()=>{},()=>false,1);assert.equal(calls,1);assert.equal(items[1].state,'trash');
 });
+
+test('sync preserves queued recategorization but remote Trash still wins',async()=>{
+ const item={remoteId:'p',revision:2,state:'pending',reprocess:true};
+ await mergePhotos([item],[{id:'p',revision:2,state:'done',category:'Indoors'}]);assert.equal(item.state,'pending');
+ await mergePhotos([item],[{id:'p',revision:3,state:'trash'}]);assert.equal(item.state,'trash');assert.equal(item.reprocess,undefined);
+});

@@ -82,3 +82,7 @@ cd ../infra && go test ./...
 ```
 
 Tests cover cloud request validation/signing/retries, browser flows, image crops, private sessions, conflicts, Trash, document XML, and Pulumi configuration. Local-model tests were retired with the removed feature. Live AWS model inference and two-device sync require a deployed account and real photos. The existing GitHub Pages workflow publishes a static UI preview separately from the AWS app.
+
+### Recovering photos
+
+Use **Retry failed photos** to upload failed photos again in place and resume pending or failed categorization, including in manual mode. Use **Restart categorization** to rerun active photos with the current prompt. Trash and unresolved sync conflicts are excluded. Both controls are in the bottom action bar and are disabled while a recovery is in progress. Keep the page open to retain files whose upload has not succeeded.

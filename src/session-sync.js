@@ -32,7 +32,8 @@ export async function mergePhotos(existing,photos,{knownAtStart}={}){
  for(const photo of photos){if(photo.state==='shredded'){const removed=byId.get(photo.id);if(removed)removed.shredded=true;continue;}seen.add(photo.id);let item=byId.get(photo.id);
  if(photo.state==='uploading'){if(item)result.push(item);continue;}
  if(!item)item={remoteId:photo.id,file:{name:photo.id,type:photo.mime,size:photo.bytes}};
- if(!item.dirty&&item.state!=='processing'&&(!item.revision||photo.revision>=item.revision))Object.assign(item,{revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,conflict:!!photo.conflict,expiresAt:photo.expiresAt,error:photo.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':''});
+ if(item.reprocess&&(photo.state==='trash'||photo.conflict)&&photo.revision>=item.revision)delete item.reprocess;
+ if(!item.dirty&&!item.reprocess&&item.state!=='processing'&&(!item.revision||photo.revision>=item.revision))Object.assign(item,{revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,conflict:!!photo.conflict,expiresAt:photo.expiresAt,error:photo.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':''});
  item.preparedUrl=photo.preparedUrl;item.thumbnail=item.exportImage||photo.preparedUrl;item.originalUrl=photo.originalUrl;result.push(item);
  }
  for(const item of existing){if(!item.remoteId){result.push(item);continue;}if(!seen.has(item.remoteId)){if(!item.shredded&&knownAtStart&&!knownAtStart.has(item.remoteId))result.push(item);else item.shredded=true;}}

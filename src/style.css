@@ -50,3 +50,5 @@ svg[hidden]{display:none!important}.export-controls>.setting-toggle{display:flex
 .batch-summary{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.summary-icons{display:inline-flex;align-items:center;gap:14px}.summary-icons>span{display:inline-flex;align-items:center;gap:5px}.summary-icons svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7}.attention-count{font-size:0!important}.attention-count::before{content:'⚠ ' attr(data-count);font-size:13px}.batch-summary .sync-cloud{margin-left:2px}.photo-card .remove-photo svg{fill:none}
 
 .sync-cloud[data-error=true]{color:#b42318}
+
+.action-bar-secondary{display:flex;flex-wrap:wrap;gap:6px 12px;padding-inline:0}.action-bar-secondary .quiet{font-size:13px;padding:8px 10px}

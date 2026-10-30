@@ -24,7 +24,7 @@ export async function runBatch(items,classify,changed,cancelled,concurrency=1){
     if(cancelled()){item.state='pending';break;}
     item.rawOutput=String(answer);const result=parseResult(answer);item.category=result?.category??null;item.description=result?.description??'';item.state=item.category?'done':'review';item.error=item.category?'':'The model did not return a clear category. Choose one below.';
    }catch(error){if(cancelled()){item.state='pending';break;}item.state=error.photoConflict?'review':'error';item.error=error.message;if(error.pauseBatch)paused=true;}
-   changed();
+   delete item.reprocess;changed();
   }
  }
  const slots=Math.max(1,Math.min(3,Math.floor(Number(concurrency))||1));
