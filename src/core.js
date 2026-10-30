@@ -13,8 +13,8 @@ export function validatePhoto(file){
  if(file.type && !file.type.startsWith('image/'))throw new Error('Choose an image file.');
 }
 export function friendlyError(message){
- if(/out of memory|allocation|buffer size|device lost/i.test(message))return 'This device ran out of GPU memory. Close other tabs and retry, or try a newer device.';
- if(/fetch|network|offline|load failed/i.test(message))return 'A model file could not be loaded. Connect to the internet and retry; cached files will be reused.';
+ if(/out of memory|allocation|buffer size|device lost/i.test(message))return 'Photo processing ran out of memory. Try fewer or smaller photos.';
+ if(/fetch|network|offline|load failed/i.test(message))return 'Cloud processing could not connect. Connect to the internet and retry.';
  return message || 'Something went wrong. Please try again.';
 }
 

@@ -1,19 +1,12 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#164f46"><meta name="description" content="Categorize photos on your device or with optional cloud AI."><link rel="apple-touch-icon" href="%BASE_URL%icons/icon-180.png"><title>Audit · Categorize photos</title></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#164f46"><meta name="description" content="Categorize photos using Gemma 4 E2B on Amazon Bedrock."><link rel="apple-touch-icon" href="%BASE_URL%icons/icon-180.png"><title>Audit · Categorize photos</title></head>
 <body>
 <header><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">◉</span> Audit</a><h1 id="section-title" class="section-title">Categorize</h1><div class="header-actions"><button id="install" class="quiet" hidden>Install app ↗</button><details class="hamburger"><summary aria-label="Open navigation">☰</summary><nav><a href="./sessions.html">Sessions</a><a href="#categorize">Categorize</a><a href="./describe.html">Describe</a><a href="#settings">Settings</a><button id="sign-out" class="quiet" hidden>Log out</button></nav></details></div></header>
 <main>
 
 <section id="settings-page" hidden>
-<section class="settings-panel"><h2>Model</h2><label for="batch-model">Categorization model</label>
-<select id="batch-model" aria-describedby="batch-model-details"></select>
-<p id="no-models" hidden>No downloaded categorization models. <a href="./models.html">Download a model</a> to begin.</p>
-<div id="cloud-notice" hidden><p>Cloud Gemma sends resized photos and your prompt to Google. Google may use this content to improve its products. Internet is required.</p><label><input id="cloud-consent" type="checkbox" checked> I agree to send selected photos and the prompt to Google.</label></div>
-<p id="precision-label" class="small">Precision: waiting for model</p><p id="batch-model-details" class="small"></p>
-<p class="small">Florence-2 uses fixed vision tasks and is available on the description page. Switching models keeps completed categories and uses your choice for remaining photos.</p>
-<p>Photos are processed one at a time. On-device models require a download; cloud models do not.</p>
-<h3>Downloads</h3><a href="./models.html">Manage on-device models →</a></section>
+<section class="settings-panel"><h2>Cloud model</h2><p id="cloud-model-label">Gemma 4 E2B · Amazon Bedrock</p><div id="cloud-notice"><p>Prepared photos and your prompt are sent to Amazon Bedrock for processing. Internet is required.</p><label><input id="cloud-consent" type="checkbox" checked> I agree to process selected photos and the prompt with AWS.</label></div><p id="precision-label" class="small">Precision: AWS-managed (not disclosed)</p></section>
 <section class="settings-panel"><h2>Controls</h2><p class="small">Signed-in sessions store original photos, prepared images, and results privately in AWS so you can use them on your other devices.</p><label>Language<select id="language"><option value="en">English</option><option value="es">Spanish</option></select></label><label class="setting-toggle"><input id="left-handed" type="checkbox"> Left-handed mobile controls</label><label class="setting-toggle"><input id="auto-categorize" type="checkbox" checked> Categorize immediately after selecting photos</label></section>
 <section class="settings-panel"><h2>Prompt</h2><label for="category-prompt">Categorization prompt</label><textarea id="category-prompt" rows="6" maxlength="1000"></textarea><p id="prompt-id" class="small">Prompt ID appears when processing starts.</p><button id="reset-prompt" class="quiet">Reset prompt</button><p class="small">Return JSON with category and description.</p>
 </section><section class="settings-panel"><h2>Diagnostics</h2><label class="setting-toggle"><input id="show-diagnostics" type="checkbox"> Show troubleshooting logs</label><label class="setting-toggle"><input id="show-photo-details" type="checkbox"> Show image details</label><div id="diagnostics-slot"></div></section></section>
@@ -23,8 +16,6 @@
 <input id="photos" type="file" accept="image/*" multiple hidden>
 
 <div aria-live="polite" role="status"><span id="spinner" class="spinner" hidden></span> <span id="status" hidden>Checking browser compatibility…</span></div>
-<div id="file-downloads" class="file-downloads" aria-label="Model file downloads"></div>
-<div id="download" hidden><progress id="download-progress" max="100" aria-label="Model file download"></progress><p id="download-label" class="small"></p></div>
 <p class="batch-summary small"><span id="summary" class="visually-hidden"></span><span class="summary-icons" aria-hidden="true"><span title="Processed"><svg viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4H4v17h16V4h-3M8 13l3 3 6-7"/></svg><span id="counter-processed">0</span></span><span title="Categorized"><svg viewBox="0 0 24 24"><path d="M3 4h8l10 10-7 7L3 10Z"/><circle cx="7" cy="8" r="1"/></svg><span id="counter-categorized">0</span></span><span title="Uploaded"><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/></svg><span id="counter-uploaded">0/0</span></span></span><button id="attention-count" class="attention-count" disabled>0 need attention</button><span id="sync-cloud" class="sync-cloud" role="img" aria-label="Cloud sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M7 18a5 5 0 0 1-1-10 6 6 0 0 1 11-1 5 5 0 0 1 1 11H7Z"/></svg></span></p><progress id="batch-progress" value="0" max="1" aria-label="Photos processed" hidden></progress>
 
 <p id="export-status" class="small" role="status" aria-live="polite"></p></section>

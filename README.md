@@ -1,201 +1,84 @@
-# Audit · SmolVLM2 PWA
+# Audit
 
-A mobile-first, installable photo categorizer and describer. Pick a photo from the Android/iOS system gallery and describe it **on device** with a choice of five vision models. The AWS app uses email/password accounts and private photo sessions shared between your devices. Static/local mode can still run on-device models without an account or API key. Hosted Gemma categorization sends prepared photos to Google through the Go backend after consent.
+A cloud-only PWA for categorizing photos with **Gemma 4 E2B on Amazon Bedrock**. Upload from your phone or laptop into the same private session, review categories, and export Word or PowerPoint documents from either device.
 
-## Run
+## Deploy
 
-Node.js 22.12+ (or 24) is required.
+Install Node 22.12+ (or 24), Go 1.25+, AWS CLI v2, and Pulumi. Use the existing AWS profile and stack:
 
-```sh
-npm ci
-npm run build
-npm run preview
+```powershell
+git pull
+.\deploy.bat
 ```
 
-Open the localhost URL. For development, run `node scripts/assets.mjs` then `npm run dev`. A physical phone needs an **HTTPS** host: ordinary HTTP over a LAN IP does not enable WebGPU or service workers. Desktop localhost is a secure-context exception.
+On Linux/macOS, use `sh ./deploy.sh`. The wizard reuses `.deploy/settings.json`, S3 state, KMS secrets and Cloudflare credentials. Defaults target `audit.apexfission.com`, stack `dev`, region `us-east-1`. Expired SSO credentials trigger AWS login when needed. Enter confirms deployment, or it proceeds after the existing five-second countdown; `n` cancels.
 
-## GitHub Pages
+No Google API key, Hugging Face token, local model download or browser GPU is required. The wizard verifies Gemma model metadata with your AWS credentials. That check is not a billed generation and does not prove that every inference request will succeed. AWS model access, organization policies, account quotas and billing must permit Bedrock inference.
 
-In repository **Settings → Pages → Build and deployment**, select **GitHub Actions**, then run the **Build and deploy PWA** workflow. The workflow also builds and tests pull requests without deploying them. Its production base path is `/pwa.smolvlm2/`.
+See [AWS deployment details](docs/aws-deployment.md).
 
-Expected URL after a successful deployment: https://lambdawalker.github.io/pwa.smolvlm2/
+## Photos and sessions
 
-For another static host, `npm run build` uses `/` by default. Set `BASE_PATH=/your-subpath/` when needed and serve `dist/` over HTTPS.
+Create an account, verify its email and log in on both devices. Create or open a session. Photo previews appear immediately, while originals and prepared images upload privately in the background. Categorization begins automatically by default; Settings can switch to manual start. Images are scaled to make the shorter side 384 pixels, then center-cropped to 384×384 before inference. Full originals remain available by clicking a photo.
 
-## Experience
+Categories are **Indoors**, **Outdoors**, **Documents**, and **Computer screens**. The editable prompt asks for JSON `{category, description}` with a description of one sentence, as short as possible. The UI limits description length. English and Spanish are supported. Describe is a separate cloud-only page for a single photo and custom prompt.
 
-1. Open **Download models**, choose a model, and wait for verification. Previously cached files are reused. Then open Categorize photos or Describe a photo; their selectors show only fully verified, downloaded models for your device.
-2. Once the model is ready, tap **Continue to photos** and choose one photo (gallery picker; no forced camera capture).
-3. Pick a description style, or choose **Custom prompt** and enter a question/instruction (up to 1,000 characters). Tap **Describe photo**.
-4. Descriptions stream into the page. Cancel terminates the worker immediately, releasing its model; completed cached files are reused on retry.
-5. Copy the result, change the photo, or remove it from the page.
+Sessions can be created, renamed, opened or permanently deleted on the Sessions page. Idle and active pages check for changes every ten seconds without locking controls. Conditional ETags avoid downloading unchanged metadata, and new images load lazily. Photos and metadata are private to the authenticated user. Offline edits are not persistently queued.
 
-English prompts/output are intentional: this tiny model is primarily English. Generated text can be inaccurate. It is not an OCR accuracy guarantee or an accessibility substitute without review. The model supports video, but this app intentionally accepts **still photos only**.
+## Trash and conflicts
 
-## Browser support and limitations
+Deleting a photo moves it to **Trash** for 48 hours. Choose a category to restore it. Trash images are excluded from exports and active counters. Stale edits, including delete-versus-edit conflicts, move the image to **Needs attention** for review.
 
-- Requires a working WebGPU adapter in the browser, not just an advertised GPU.
-- Compatible Android Chrome browsers and iOS 26+ Safari are targets; support is detected before enabling inference. No silent CPU fallback or cloud upload.
-- Mobile GPU drivers, available RAM, browser memory limits and model operators affect compatibility. A runtime error offers retry; close other tabs if memory is exhausted.
-- Browser-decodable JPEG/PNG/WebP and other images are accepted. HEIC/HEIF only works when the browser can decode it; otherwise the UI asks for JPEG or a screenshot.
-- Input file limit: 30 MB. Images are resized to a maximum 768-pixel edge, metadata is not sent to the model, and image splitting is disabled. Very large source photos can still require significant decoding memory.
-- In static/local guest mode, photos and descriptions remain in memory. Signed-in AWS sessions persist originals, prepared images, categories, and descriptions in private storage for access from your other devices.
+The paper-shredder button permanently deletes an image and overrides conflicting edits. In Trash, the action-bar shredder permanently empties Trash. An AWS EventBridge job checks every five minutes for expired Trash and interrupted shredding, so cleanup works with all browsers closed. Physical cleanup is eventual after the retention deadline and may take additional passes for large backlogs or failed requests. Deleting an entire session remains permanent.
 
-## Offline and installation
+## Documents
 
-The generated service worker precaches the app, worker and matching ONNX Runtime WASM assets. Transformers.js uses its `transformers-cache` Cache Storage cache for model/configuration files. Complete one online description before attempting offline use. Storage persistence is requested best-effort; the browser may deny it or evict caches. Offline readiness is not guaranteed merely by installing the PWA.
+PowerPoint is the default; Word is also available. Both default to portrait, two columns, seven rows, descriptions off. Category headings separate sections. All layouts use borderless photo grids with small gutters and optional descriptions below images. Generated documents download automatically. Grid/list views, mobile category swiping, image removal, and left-handed controls are available.
 
-On Android, use the install button when offered or the browser menu. On iPhone, Share → Add to Home Screen. Installing does not bypass browser memory limits, and backgrounding may suspend inference. Updates wait for the user to reload; reload is disabled while a task is running. **Delete downloaded model** clears only Transformers.js's cache (shared by this origin), not the app shell.
+Defaults are in `config/categorization-defaults.yaml`; `npm run defaults` regenerates `src/defaults.generated.js`. Saved browser preferences override applicable defaults.
 
-## Implementation
+## AWS inference
 
-- Vite + vanilla JavaScript, responsive CSS; Go Lambda API with Cognito accounts, DynamoDB session metadata, and private S3 photos on AWS.
-- Transformers.js 3.8.1 with `AutoModelForVision2Seq` and `AutoProcessor`.
-- Dedicated module worker; WebGPU fp16 vision/embeddings + q4f16 decoder when available, otherwise fp32 vision/embeddings + q4 decoder.
-- ONNX Runtime WASM/module files copied from the locked dependency at build time, served from the same origin.
-- All model revisions are pinned in `src/models.js` for reproducible downloads.
+The Go API calls `google.gemma-4-e2b` at the regional **bedrock-mantle** `/openai/v1/chat/completions` endpoint. It signs requests with AWS SigV4 using the Lambda role; no API key reaches the browser. Pulumi grants `bedrock-mantle:CreateInference` with the model and region restricted by IAM conditions. Gemma 4 is not routed through the native Bedrock Converse/InvokeModel endpoint.
+
+Default region is `us-east-1`; supported regions are `us-east-1`, `us-east-2`, `us-west-2`, and `eu-central-1`. Override with `pulumi config set bedrockRegion REGION` in `infra`. Disable inference with `pulumi config set bedrockEnabled false` and deploy. Bedrock on-demand requests are billed by AWS; this setup does not provision an always-on GPU instance. Runtime precision is AWS-managed and not disclosed.
+
+Prepared JPEGs, prompts and returned text are validated/bounded. Provider bodies, AWS credentials and reasoning text are never forwarded to the browser or logged. Requests share a 25-second deadline; only explicit transient server errors retry, up to three attempts. Throttles and access failures do not retry silently. There is no Google fallback.
+
+Existing encrypted `geminiApiKey` config is unused. You may remove it with `pulumi config rm geminiApiKey` and revoke the old key in Google Cloud. Do not remove other stack state or KMS keys.
+
+## Local development
+
+The local launcher runs the web app and Go API on your computer; **inference still runs in AWS**. It reuses the AWS profile/region from `.deploy/settings.json` or environment variables. Authenticate first:
+
+```powershell
+aws sso login --profile attestra
+.\local.bat
+```
+
+Use `sh ./local.sh` on Linux/macOS. Set `AWS_PROFILE` and `BEDROCK_REGION` to override saved values. The local identity needs `bedrock-mantle:GetModel` for the startup check and `bedrock-mantle:CreateInference` for the selected model. AWS credentials are passed only to the Go process, not Vite. To test accounts and sessions locally, also supply the existing stack's `COGNITO_POOL_ID`, `COGNITO_CLIENT_ID`, `AWS_REGION`, `SESSIONS_TABLE` and `PHOTOS_BUCKET`.
+
+Static hosting/`npm run preview` can preview the interface, but cloud inference and shared sessions require the Go API. Phone browser access should use HTTPS; the deployed PWA does not require WebGPU. The old model-download URL redirects to Categorize. Retired browser model caches are cleared on the next updated-page load.
+
+## Deployment size and order
+
+The build no longer ships Transformers.js, model workers, ONNX WASM binaries or browser model downloads. The frontend precache is about 0.85 MiB rather than about 54 MiB (exact size depends on the build).
+
+1. Upload the Lambda ZIP to the private artifact bucket when its content hash changes.
+2. Update Lambda, its model permissions, API and other backend dependencies.
+3. Upload frontend assets.
+4. Publish HTML, manifest and service worker after their referenced assets.
+
+The Lambda update contains an S3 reference, not the ZIP bytes. The build disables VCS stamping and uses a deterministic ZIP, so frontend-only Git commits do not change the backend package. The ZIP must still upload when backend code or compiler output changes; dependency ordering cannot remove that requirement. Slow networks and AWS resource provisioning can still dominate deployment time.
 
 ## Validation
 
 ```sh
+npm ci
 npm test
-npm run build
-# Optional: downloads processor/tokenizer configuration, not model weights
-npm run test:model
+npm run build:aws
+cd backend && go test ./...
+cd ../infra && go test ./...
 ```
 
-Unit tests cover photo sizing, file validation, and recovery messages. `test:model` exercises the real pinned SmolVLM2 chat template and image processor, asserting the expected image tensor shape. Before claiming support for a device, perform the following manual acceptance checks on **real Android and iOS devices**:
-
-- Pick a real gallery image, finish the model download, and obtain a relevant description.
-- In on-device mode, confirm the network contains model downloads but no image uploads. In cloud mode, confirm uploads happen only after consent and go through `/api/classify`.
-- Cancel during download and generation, retry, and switch images.
-- Close/reopen offline and repeat inference after caches were populated.
-- Try HEIC, unsupported files, low storage and GPU/memory failures.
-- Install to home screen, verify launch/icon, then test an app update.
-
-Build/unit checks do not prove model inference or performance on a phone.
-
-## Attribution
-
-SmolVLM2 by Hugging Face: https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct (Apache-2.0 model license). Transformers.js: https://github.com/huggingface/transformers.js (Apache-2.0). Model weights are downloaded from Hugging Face, not committed here. Dependencies retain their own licenses.
-
-### Guided model setup
-
-Open **Download models** to download or verify any of the five models. Each file has its own progress bar. A model becomes available after successful loading and verification that all requested files are in the browser cache. The receipt is tied to its pinned revision and device precision variant. Photo pages check every receipt file and use cached-only loading, so missing files require returning to the downloads page. Old caches from earlier app versions need one verification pass; existing files are reused. Delete cached files removes that model and its receipts. Browser storage eviction can make a model unavailable again.
-
-## AWS deployment (Go + Pulumi)
-
-See [the AWS deployment guide](docs/aws-deployment.md) for Windows-friendly setup, build, preview, deployment, updates, and cleanup. The stack provides CloudFront HTTPS + private S3 for the PWA and an API Gateway + Go Lambda backend at `/api/*`. Build everything with `npm run build:aws`, then deploy from `infra/` with Pulumi. On-device inference remains available; optional cloud categorization uses the Go API.
-
-Deploy to **audit.apexfission.com** using `.\deploy.bat` on Windows or `sh ./deploy.sh` on Linux/macOS. The Go wizard guides AWS/Pulumi authentication, Cloudflare DNS setup, builds, preview, and deployment confirmation. See the deployment guide for prerequisites and the scoped Cloudflare API token.
-
-The wizard defaults to **S3-backed Pulumi state** with a private versioned bucket and AWS KMS secrets. It remembers non-secret setup in `.deploy/settings.json` and reuses the encrypted Cloudflare token. Subsequent runs skip setup questions; use `--configure` to review the saved defaults. The state bucket/key are prepared before the application preview and retained independently of the app.
-
-## Available vision models
-
-| Model | Approximate model download | Modes |
-| --- | --- | --- |
-| SmolVLM2 256M | 350–650 MB | Descriptions, custom prompts |
-| SmolVLM2 500M | 550–900 MB | Descriptions, custom prompts |
-| Original SmolVLM 500M | 550–900 MB | Descriptions, custom prompts |
-| Florence-2 Base 230M (fine-tuned) | 450–850 MB | Short/detailed captions, OCR, object detection |
-| Moondream2 (Xenova ONNX export) | 1.5–1.8 GB | Descriptions, custom prompts |
-
-Estimates include some overhead and vary with shader-f16 support; these are downloads, not RAM requirements. Moondream2 is substantially larger and may exhaust phone memory. This is the pinned Xenova conversion, not a promise of features from newer Moondream releases.
-
-Florence uses native task tokens and postprocessing instead of the chat prompt. Its outputs appear after generation (no token streaming); object detection displays JSON labels and bounding boxes in resized-photo pixel coordinates. Florence does not expose free-form chat prompts. Changing to a conversational model restores the description/custom-prompt controls.
-
-Each model has a pinned revision and family-specific loading, preprocessing, and decoding. `npm run test:model` checks real processor/tokenizer inputs for all five without downloading model weights. Full WebGPU inference and memory limits still require testing on target phones.
-
-## Batch categorization
-
-The home page selects multiple images and uses **SmolVLM2 256M** to categorize them into Indoors, Outdoors, Documents, or Computer screens. When downloaded, the dropdown also offers SmolVLM2 500M, original SmolVLM 500M, and Moondream2. Florence-2 is omitted here because it does not support the free-form categorization prompt; it remains available on the description page. The batch selector defaults to 256M when downloaded, otherwise the first available model and is independent of the description page. Switching models releases the previous worker and keeps completed categories; only pending photos use the new selection. The selector is locked during processing—stop first to change models. Tap **Categorize photos** to restore the downloaded model and start.
-
-Images are resized and processed sequentially on the device. Stop keeps completed results; continue processes the remaining photos. Failed files can be retried. Ambiguous model responses appear under Needs attention instead of being silently assigned a category. Each card has a category selector for corrections. Computer interfaces/screens take precedence over documents, and documents take precedence over indoor/outdoor scenes when they are the main subject.
-
-Results and selected photos stay in memory for the current visit; refreshing clears them. On-device mode uploads no photos. Cloud mode uploads resized JPEGs and the prompt to Google; neither mode moves or changes files in the phone gallery. Only small processed thumbnails are kept alongside the selected File references. Full-size decoded images are handled one at a time. Classification accuracy must be evaluated on your photos; the small model can misclassify them.
-
-The previous single-photo experience, including all five model choices and custom prompts, is available at `describe.html` through **Describe a photo**. Both pages are included in the production build and service-worker precache.
-
-## Dependency maintenance
-
-`package.json` scopes two overrides to their upstream consumers: `onnxruntime-node` uses `global-agent` 4.1.3 to remove the abandoned `boolean` dependency, and `workbox-build` uses `glob` 13.0.6 instead of deprecated glob 11. The ONNX runtime and Transformers.js versions are unchanged. Keep `package-lock.json` committed and use `npm ci` for reproducible installs. Revisit these overrides when upgrading the parent packages. These overrides address the deprecation warnings; they do not resolve every finding reported by `npm audit`.
-
-### Model download progress
-
-Both pages show one progress bar per requested file. Model transfers are limited to three at once, with slots held until the response body finishes. Files already queued are started smallest-first using size metadata for the pinned Hugging Face revision; unknown sizes go last. Configuration dependencies can introduce files later, so this is a priority order among ready requests, not a global ordering of every model file. Cached files are reused without network transfers. If size metadata is unavailable, loading still works with the three-transfer limit. Stopping terminates the worker and its pending downloads.
-
-### Prompt editing and raw output
-
-The categorization prompt can be edited before starting a batch (up to 1,000 characters), or restored with Reset prompt. The chosen text is fixed for that run; editing is locked while processing. Each processed photo card displays the model's text output before category parsing, including responses that require manual review. Manual category corrections do not alter that output.
-
-### SmolVLM image resizing check
-
-The app already downsizes photos proportionally to a maximum 768-pixel edge without upscaling. The pinned SmolVLM processors run with `do_image_splitting: false`. Running `node scripts/check-resizing.mjs` on all three SmolVLM variants with 256×192, 512×384, 768×576, and 1536×1152 synthetic images produced the same `[1, 1, 3, 512, 512]` pixel tensor and 79 prompt tokens in every case. This verifies processing shape, not classification accuracy or phone latency.
-
-The existing resize reduces the image data sent to the worker and its decoding work, but reducing it further does not reduce the model's input tensor in this mode and can discard detail. We retain the 768-pixel cap. Evaluating quality changes or enabling image splitting requires representative labeled photos and phone benchmarks. Hugging Face documents resizing and splitting at https://huggingface.co/docs/transformers/main/model_doc/smolvlm.
-
-### Troubleshooting stalled inference
-
-Open **Troubleshooting logs** at the bottom of a page and choose **Copy diagnostic report** after reproducing a failure. The same timestamped entries appear in the browser console with the `[Audit]` prefix. Reports contain browser capabilities, model stages, GPU limits, input tensor dimensions, and errors, without intentionally recording images, filenames, prompt text, or generated output. Review reports before sharing. The categorization worker warns after 45 seconds without messages and is terminated after three minutes without messages; loading can be retried. This is diagnostic instrumentation, not evidence that every device's inference issue is fixed.
-
-### Comparing devices
-
-Precision labels show the actual loaded ONNX dtype for each component, not just whether the GPU supports FP16. Each batch result retains its own model, precision and prompt fingerprint. Full SHA-256 prompt hashes are logged for the exact trimmed prompt sent to the worker; UI labels show the first 12 hexadecimal characters (48 bits, a comparison aid rather than a uniqueness guarantee).
-
-Photo diagnostics include original MIME type, byte size and decoded dimensions; prepared JPEG dimensions, byte size and quality; SHA-256 hashes of the original file, prepared JPEG bytes, resized canvas pixels, and the worker-decoded pixels. Tensor dimensions are also logged. Compare source hashes first, then prepared/pixel hashes to identify preprocessing differences. These hashes are diagnostic identifiers, not anonymization; reports still omit actual images and prompt/output text.
-
-
-## Hosted Gemma categorization
-
-The main page offers **Gemma 4 · Cloud (free-tier quota)** when the backend has a configured Google AI Studio API key. It uses `gemma-4-26b-a4b-it` via Google's Gemini API, requires internet but no WebGPU or local model download, and keeps the same editable category prompt, raw answers, prompt hashes, and manual review flow. Cloud precision is provider-managed and is not reported as FP16 or another guessed format.
-
-Run `deploy.bat` or `deploy.sh`. The wizard reuses `GEMINI_API_KEY` or the encrypted Pulumi `geminiApiKey` secret; otherwise it asks once with hidden input. Get a key at https://aistudio.google.com/apikey. Enter skips cloud setup when no saved key exists. The wizard checks model metadata access without uploading a photo. Model access does not guarantee remaining generation quota.
-
-Before starting cloud processing, users must check the Google-upload consent box. Resized JPEGs (up to 768 pixels per side) and the prompt go through AWS to Google. The application does not persist these uploads or log their content. Google's free-tier data-use terms apply; data may be used to improve Google products. No paid model fallback is implemented, and the application cannot guarantee future provider pricing or quota. API errors pause the batch; users can retry failed photos or continue remaining photos later. Stop cancels the browser request, but a request already accepted by Google may still finish.
-
-The API is currently public, with API Gateway throttling and strict upload limits. The origin check is not authentication: other clients can consume the shared quota. Use this as a limited demo; add user authentication before broader public use. The API key stays server-side and is stored in KMS-encrypted Pulumi config and Lambda environment configuration. Static-only hosting (such as GitHub Pages) does not offer cloud mode.
-
-For local development, set `GEMINI_API_KEY` in the backend process and run `go run ./cmd/api` from `backend/`, alongside `npm run dev`. The Vite API proxy is already configured. To rotate the deployed key, set `GEMINI_API_KEY` locally and rerun the wizard. To disable cloud mode, remove the environment variable, run `pulumi config rm geminiApiKey` in `infra/`, and redeploy (Enter skips setup when prompted).
-
-### Local development with Google
-
-Run `local.bat` on Windows or `./local.sh` on macOS/Linux. Install Node (compatible with Vite), npm, and Go 1.25+ first. The launcher asks for a hidden Google API key, or reuses `GEMINI_API_KEY` if set. Enter without a key enables only on-device models. The key is passed to the local Go API, never written to disk or sent to Vite.
-
-The launcher runs `npm ci`, builds the API, and starts both servers. Open **http://localhost:5173**. Vite proxies `/api` to the Go backend at `127.0.0.1:8080`. Both ports must be free. Press Ctrl+C to stop. No AWS deployment or credentials are required; Google classification still requires internet and sends selected images to Google. These launchers bind to loopback for desktop testing, not phone access over LAN.
-
-### Categorization defaults
-
-Edit `config/categorization-defaults.yaml` to set interface and document defaults. The default document uses portrait orientation with **7 rows × 2 columns** (14 images per page). The YAML controls the model, prompt, language, view, automatic start, cloud concurrency, consent, handedness, diagnostic visibility, document type, orientation, rows, columns, layout, and description toggle. Saved browser preferences override the corresponding interface defaults. Reset Prompt restores the YAML prompt.
-
-`npm run defaults` validates the YAML and refreshes `src/defaults.generated.js`; never edit the generated file. This also runs automatically with `npm test`, `npm run dev`, production builds, and the local launcher. Rebuild and deploy to apply YAML changes to the hosted app.
-
-### Security dependency pins
-
-Vite is pinned to 7.3.7. Scoped npm overrides select `image-size` 2.0.3 under PptxGenJS and `sharp` 0.35.5 under Transformers.js, addressing the current parser/native-library advisories without changing the app's PptxGenJS 4.0.1 or Transformers.js 3.8.1 APIs. Keep these overrides until upstream dependency ranges include patched versions and the overrides can be removed safely. Run `npm ci`, `npm audit`, `npm test`, and `npm run build:aws` after changing them. Tests cover Office export generation and actual image decoding/resizing through Transformers.js with the patched native dependency; they do not replace mobile model inference checks.
-
-## Accounts and sessions
-
-After deploying the updated AWS stack, open **Create account**, enter an email and password (12+ characters with uppercase, lowercase and a number), verify the emailed code, then log in. Password reset and resending verification codes are available on the login page. Sign in with the same account on your phone and laptop.
-
-Use **New session** to name a photo session, or select an existing session. Both devices can add photos to the same session. Originals and 384×384 prepared JPEGs upload directly to private S3 using short-lived signed URLs. Categories, descriptions and raw results are saved in DynamoDB. Pages check for changes every 10 seconds and on focus without blocking uploads, category edits, or document creation. Unchanged sessions use conditional requests; new images load lazily. The same session can be exported on either device. A conflict asks you to refresh rather than overwriting another device's newer edits. Avoid categorizing the same pending photo on both devices simultaneously, which can duplicate inference requests.
-
-Word and PowerPoint export use borderless photo grids with small gutters, optional descriptions below each photo, and category section headings. PowerPoint, portrait orientation, 2 columns × 7 rows, and descriptions off are the defaults in `config/categorization-defaults.yaml`. The categorization prompt requests one sentence as short as possible.
-
-Access and refresh tokens stay in the tab's session storage; passwords are never stored by the app. Closing the tab requires logging in again. Signing out clears this tab's credentials. Signing in on another device does not sign out the first device. Removing or clearing photos moves them into the shared Trash category for 48 hours. Restore a photo by choosing a category. Shredding is permanent and takes precedence over edits from another device.
-
-Static hosting and the default local launcher have no accounts or persistent sessions. To exercise accounts locally against an existing AWS stack, set `AWS_PROFILE`, `AWS_REGION`, `COGNITO_POOL_ID`, `COGNITO_CLIENT_ID`, `SESSIONS_TABLE`, and `PHOTOS_BUCKET` before running `local.sh` / `local.bat`. The deployed photo bucket allows `http://localhost:5173` and `http://127.0.0.1:5173` as well as the configured HTTPS domain.
-
-### Manage sessions
-
-Open **Sessions** from the hamburger menu or **Manage sessions** next to the session picker. Create a named session, rename it, or choose **Open** to categorize its photos. Deleting requires confirmation and removes the session's original photos, prepared photos, and results from all devices. Large sessions are deleted in batches automatically. An interrupted deletion appears as **Retry deletion**; open/rename and new uploads are blocked until cleanup finishes. Other sessions and other users' data are unaffected.
-
-Sessions created before this update remain supported. Rename uses revision checks so an older screen cannot overwrite a newer name. The session picker refreshes names, removes deleted sessions, and switches to another available session when needed.
-
-### Background sync, conflicts, and Trash
-
-The cloud icon sits next to icon counters for processed, categorized, uploaded, and attention counts. It changes color for syncing or an error; a tooltip and accessible labels describe its state. Polling does not lock controls or rebuild unchanged photo cards. New remote photos use browser image loading; their prepared image is fetched for inference or document export only when needed.
-
-Trash is a separate gallery category, not an AI classification label. The trash button and Clear photos move photos there; Trash photos do not appear in exports or active progress totals. Use the category dropdown to restore a photo, including its original category. In Trash, the action bar changes to a shredder for permanently emptying Trash. Trash retains each photo for 48 hours. An AWS EventBridge rule checks every five minutes and permanently removes expired photos and their originals/prepared files, including when all devices are closed. Cleanup is eventual after the retention deadline; larger backlogs or failed requests can take additional runs. Guest/local Trash exists only in the current tab and expires there while the page remains open.
-
-Stale edits and delete-versus-edit conflicts are stored as Needs attention on the server and sync to every device. Review a conflicted image by selecting its category. Explicit permanent deletion uses the paper-shredder button in Trash. It marks a server tombstone before deleting objects, so stale edits cannot resurrect it. Interrupted file cleanup is retried by the scheduled worker. Failed local uploads and current edits are preserved when background sync applies other changes. Offline edits are not queued persistently.
+Tests cover cloud request validation/signing/retries, browser flows, image crops, private sessions, conflicts, Trash, document XML, and Pulumi configuration. Local-model tests were retired with the removed feature. Live AWS model inference and two-device sync require a deployed account and real photos. The existing GitHub Pages workflow publishes a static UI preview separately from the AWS app.

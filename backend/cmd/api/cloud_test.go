@@ -5,124 +5,91 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/lambdawalker/pwa.smolvlm2/backend/internal/bedrock"
 	"image"
 	"image/jpeg"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/aws/aws-lambda-go/events"
 )
 
 func cloudRequest(consent bool) events.APIGatewayV2HTTPRequest {
-	var imageBytes bytes.Buffer
-	_ = jpeg.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 10, 10)), nil)
-	body, _ := json.Marshal(map[string]any{"image": "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(imageBytes.Bytes()), "prompt": "Classify this photo.", "consent": consent})
+	var photo bytes.Buffer
+	jpeg.Encode(&photo, image.NewRGBA(image.Rect(0, 0, 10, 10)), nil)
+	body, _ := json.Marshal(map[string]any{"image": "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(photo.Bytes()), "prompt": "Classify this photo.", "consent": consent})
 	req := events.APIGatewayV2HTTPRequest{RawPath: "/api/classify", Body: string(body)}
 	req.RequestContext.HTTP.Method = "POST"
 	return req
 }
 func TestCloudValidationAndDisabled(t *testing.T) {
-	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("BEDROCK_ENABLED", "false")
+	if r := cloudRoute(context.Background(), cloudRequest(true)); r.StatusCode != 503 {
+		t.Fatal(r)
+	}
+	t.Setenv("BEDROCK_ENABLED", "true")
+	if r := cloudRoute(context.Background(), cloudRequest(false)); r.StatusCode != 400 {
+		t.Fatal(r)
+	}
 	req := cloudRequest(true)
-	got := cloudRoute(context.Background(), req)
-	if got.StatusCode != 503 {
-		t.Fatal(got)
-	}
-	t.Setenv("GEMINI_API_KEY", "private-key")
-	req = cloudRequest(false)
-	if cloudRoute(context.Background(), req).StatusCode != 400 {
-		t.Fatal("consent required")
-	}
-	req = cloudRequest(true)
 	req.Body = strings.Repeat("x", maxCloudBody+1)
-	if cloudRoute(context.Background(), req).StatusCode != 413 {
-		t.Fatal("limit required")
+	if r := cloudRoute(context.Background(), req); r.StatusCode != 413 {
+		t.Fatal(r)
 	}
-	req = cloudRequest(true)
 	req.Body = `{"image":"https://example.com/a.jpg","prompt":"test","consent":true}`
-	if cloudRoute(context.Background(), req).StatusCode != 400 {
-		t.Fatal("remote URL must not be fetched")
+	if r := cloudRoute(context.Background(), req); r.StatusCode != 400 {
+		t.Fatal("remote image URL accepted", r)
 	}
 	t.Setenv("SITE_ORIGIN", "https://audit.apexfission.com")
 	req = cloudRequest(true)
 	req.Headers = map[string]string{"origin": "https://other.test"}
-	if cloudRoute(context.Background(), req).StatusCode != 403 {
-		t.Fatal("origin")
+	if r := cloudRoute(context.Background(), req); r.StatusCode != 403 {
+		t.Fatal(r)
 	}
 }
-func TestCloudProviderResponses(t *testing.T) {
-	t.Setenv("GEMINI_API_KEY", "private-key")
+func TestBedrockResponsesAndPrivacy(t *testing.T) {
+	t.Setenv("BEDROCK_ENABLED", "true")
+	t.Setenv("BEDROCK_REGION", "us-east-1")
+	old := invokeBedrock
+	defer func() { invokeBedrock = old }()
 	for _, tc := range []struct {
 		status int
 		body   string
 		want   int
+		code   string
 	}{
-		{200, `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"thought":true,"text":"internal"},{"text":"Documents"}]}}]}`, 200},
-		{429, `{"error":"private-key"}`, 429}, {403, `{"error":"private-key"}`, 503}, {500, `{"error":"private-key"}`, 502},
-		{200, `{"candidates":[]}`, 502}, {200, `{"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"Documents"}]}}]}`, 502},
+		{200, `{"choices":[{"finish_reason":"stop","message":{"content":"Documents","reasoning_content":"internal-secret"}}]}`, 200, ""}, {403, `{"error":"private-secret"}`, 503, "PROVIDER_ACCESS_DENIED"}, {429, `{}`, 429, "PROVIDER_RATE_LIMIT"}, {500, `{}`, 502, "PROVIDER_HTTP_ERROR"}, {404, `{}`, 503, "MODEL_UNAVAILABLE"}, {200, `{"choices":[]}`, 502, "NO_CANDIDATES"}, {200, `bad json`, 502, "INVALID_PROVIDER_RESPONSE"}, {200, `{"choices":[{"finish_reason":"length"}]}`, 502, "OUTPUT_TRUNCATED"}, {200, `{"choices":[{"finish_reason":"stop","message":{"refusal":"private-secret"}}]}`, 502, "OUTPUT_BLOCKED"}, {200, `{"choices":[{"finish_reason":"tool_calls"}]}`, 502, "INCOMPLETE_OUTPUT"}, {200, `{"choices":[{"finish_reason":"stop","message":{"content":" "}}]}`, 502, "EMPTY_OUTPUT"},
 	} {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("x-goog-api-key") != "private-key" {
-				t.Error("missing key")
+		invokeBedrock = func(ctx context.Context, region string, data []byte) (*http.Response, error) {
+			if region != "us-east-1" {
+				t.Fatal(region)
 			}
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil {
-				t.Error("invalid provider JSON")
+			if json.Unmarshal(data, &body) != nil || body["model"] != bedrock.Model {
+				t.Fatal("wrong payload")
 			}
-			if len(body["contents"].([]any)) != 1 {
-				t.Error("missing image/prompt")
+			content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
+			if len(content) != 2 || content[0].(map[string]any)["type"] != "image_url" || body["reasoning_effort"] != "high" {
+				t.Fatal("wrong multimodal request")
 			}
-			w.WriteHeader(tc.status)
-			_, _ = w.Write([]byte(tc.body))
-		}))
-		original := googleEndpoint
-		googleEndpoint = server.URL
-		got := cloudRoute(context.Background(), cloudRequest(true))
-		googleEndpoint = original
-		server.Close()
-		if got.StatusCode != tc.want || strings.Contains(got.Body, "private-key") || strings.Contains(got.Body, "internal") {
-			t.Fatalf("unsafe/incorrect response: %+v", got)
+			return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
 		}
-		if tc.want == 200 && !strings.Contains(got.Body, "Documents") {
-			t.Fatal(got)
+		result := cloudRoute(context.Background(), cloudRequest(true))
+		if result.StatusCode != tc.want || strings.Contains(result.Body, "private-secret") || strings.Contains(result.Body, "internal-secret") {
+			t.Fatal(result)
+		}
+		if tc.code != "" && !strings.Contains(result.Body, tc.code) {
+			t.Fatal(result)
 		}
 	}
 }
-
-func TestCloudFailureDiagnostics(t *testing.T) {
-	t.Setenv("GEMINI_API_KEY", "private-key")
-	for _, tc := range []struct {
-		status             int
-		body, code, reason string
-	}{
-		{200, `{"candidates":[{"finishReason":"MAX_TOKENS"}]}`, "OUTPUT_TRUNCATED", "MAX_TOKENS"},
-		{200, `{"candidates":[{"finishReason":"SAFETY"}]}`, "OUTPUT_BLOCKED", "SAFETY"},
-		{200, `{"promptFeedback":{"blockReason":"SAFETY"}}`, "PROMPT_BLOCKED", "SAFETY"},
-		{200, `{"candidates":[]}`, "NO_CANDIDATES", ""},
-		{200, `not json`, "INVALID_PROVIDER_RESPONSE", ""},
-		{503, `{"error":"private-key"}`, "PROVIDER_HTTP_ERROR", ""},
-		{200, `{"candidates":[{"finishReason":"private-key"}]}`, "INCOMPLETE_OUTPUT", "OTHER"},
-	} {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(tc.status)
-			_, _ = w.Write([]byte(tc.body))
-		}))
-		previous := googleEndpoint
-		googleEndpoint = server.URL
-		got := cloudRoute(context.Background(), cloudRequest(true))
-		googleEndpoint = previous
-		server.Close()
-		var response struct {
-			Code, FinishReason string
-			ProviderStatus     int
-		}
-		if json.Unmarshal([]byte(got.Body), &response) != nil || response.Code != tc.code || response.FinishReason != tc.reason || response.ProviderStatus != tc.status {
-			t.Fatalf("unexpected diagnostics: %s", got.Body)
-		}
-		if strings.Contains(got.Body, "private-key") {
-			t.Fatal("unsafe diagnostic")
-		}
+func TestCloudCredentialErrors(t *testing.T) {
+	t.Setenv("BEDROCK_ENABLED", "true")
+	old := invokeBedrock
+	defer func() { invokeBedrock = old }()
+	invokeBedrock = func(context.Context, string, []byte) (*http.Response, error) { return nil, bedrock.ErrCredentials }
+	if r := cloudRoute(context.Background(), cloudRequest(true)); r.StatusCode != 503 {
+		t.Fatal(r)
 	}
 }

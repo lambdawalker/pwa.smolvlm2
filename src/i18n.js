@@ -39,3 +39,5 @@ Object.assign(ES,{'Conflicting changes from another device. Choose a category to
 Object.assign(ES,{'Restore to category':'Restaurar a una categoría'});
 
 Object.assign(ES,{'Empty Trash permanently':'Vaciar la papelera permanentemente'});
+
+Object.assign(ES,{'Cloud model':'Modelo en la nube','Prepared photos and your prompt are sent to Amazon Bedrock for processing. Internet is required.':'Las fotos preparadas y tus instrucciones se procesan en Amazon Bedrock. Se requiere internet.','I agree to process selected photos and the prompt with AWS.':'Acepto procesar las fotos seleccionadas y las instrucciones con AWS.','Precision: AWS-managed (not disclosed)':'Precisión: administrada por AWS (no publicada)','AWS Gemma is not configured. Run the deployment wizard.':'Gemma en AWS no está configurado. Ejecuta el asistente de despliegue.'});

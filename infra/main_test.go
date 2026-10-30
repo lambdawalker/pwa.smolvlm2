@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"sync"
 	"testing"
 
@@ -65,8 +66,15 @@ func TestCustomDomainInfrastructure(t *testing.T) {
 	if r["trash-cleanup-invoke"]["principal"].StringValue() != "events.amazonaws.com" {
 		t.Fatal("cleanup must be invoked by EventBridge")
 	}
-	if !r["api"]["environment"].ContainsSecrets() {
-		t.Fatal("API key must remain a Pulumi secret")
+	env := r["api"]["environment"].ObjectValue()["variables"].ObjectValue()
+	if _, old := env["GEMINI_API_KEY"]; old {
+		t.Fatal("Google key must not be passed to Lambda")
+	}
+	if env["BEDROCK_ENABLED"].StringValue() != "true" || env["BEDROCK_REGION"].StringValue() != "us-east-1" {
+		t.Fatal("Bedrock must be configured")
+	}
+	if !strings.Contains(r["api-bedrock"]["policy"].StringValue(), "bedrock-mantle:CreateInference") || !strings.Contains(r["api-bedrock"]["policy"].StringValue(), awsGemmaModel) {
+		t.Fatal("model-scoped Bedrock permission missing")
 	}
 	if r["api"]["timeout"].NumberValue() != 29 {
 		t.Fatal("cloud timeout must fit API Gateway")

@@ -1,75 +1,42 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"strings"
+	"github.com/lambdawalker/pwa.smolvlm2/backend/internal/bedrock"
 	"time"
-
-	"golang.org/x/term"
 )
 
-const gemmaModel = "gemma-4-26b-a4b-it"
-
-// GET metadata verifies credentials/model availability without sending photos or generating tokens.
-func checkGemmaAccess(client *http.Client, endpoint, key string) error {
-	req, err := http.NewRequest("GET", endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("cannot prepare Google access check")
+func setupBedrock(infra, stackRegion string) error {
+	fallback := stackRegion
+	if !bedrock.ValidRegion(fallback) {
+		fallback = "us-east-1"
 	}
-	req.Header.Set("x-goog-api-key", key)
-	response, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("cannot reach Google; check your connection and retry")
+	region := configValue(infra, "bedrockRegion", fallback)
+	if !bedrock.ValidRegion(region) {
+		return fmt.Errorf("unsupported Bedrock region %q; choose us-east-1, us-east-2, us-west-2 or eu-central-1", region)
 	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		return fmt.Errorf("Google model access check returned HTTP %d; check GEMINI_API_KEY and access to %s in Google AI Studio", response.StatusCode, gemmaModel)
+	enabled := configValue(infra, "bedrockEnabled", "true")
+	if enabled != "true" && enabled != "false" {
+		return fmt.Errorf("bedrockEnabled must be true or false")
 	}
-	var model struct {
-		SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
-	}
-	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&model) != nil {
-		return fmt.Errorf("invalid Google model response")
-	}
-	for _, method := range model.SupportedGenerationMethods {
-		if method == "generateContent" {
-			return nil
-		}
-	}
-	return fmt.Errorf("Google does not advertise generateContent for %s", gemmaModel)
-}
-func setupGemma(infra string) error {
-	fmt.Println("Cloud Gemma: free-tier quota applies; selected photos go to Google. Google may use free-tier content to improve its products.")
-	key := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	if key == "" {
-		key = configValue(infra, "geminiApiKey", "")
-	}
-	if key == "" {
-		fmt.Println("Create a Google AI Studio API key: https://aistudio.google.com/apikey")
-		fmt.Print("Gemini API key for hosted Gemma (hidden; Enter skips cloud setup): ")
-		value, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
+	if enabled == "true" {
+		fmt.Printf("AWS Gemma 4 E2B • Amazon Bedrock • %s. On-demand inference is billed by AWS; no Google API key or GPU instance is needed.\n", region)
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		client, err := bedrock.New(ctx, region)
 		if err != nil {
-			return fmt.Errorf("cannot read hidden key; set GEMINI_API_KEY locally and rerun")
+			return err
 		}
-		key = strings.TrimSpace(string(value))
-		if key == "" {
-			fmt.Println("Cloud Gemma disabled; on-device models remain available.")
-			return nil
+		if err = client.CheckModel(ctx); err != nil {
+			return err
 		}
-	} else {
-		fmt.Println("Reusing Gemini API key (hidden).")
+		fmt.Println("Bedrock model metadata verified using your AWS credentials. Inference access for the Lambda role is configured by Pulumi.")
 	}
-	if err := checkGemmaAccess(&http.Client{Timeout: 20 * time.Second}, "https://generativelanguage.googleapis.com/v1beta/models/"+gemmaModel, key); err != nil {
-		return err
+	for _, pair := range [][2]string{{"bedrockRegion", region}, {"bedrockEnabled", enabled}} {
+		if err := run(infra, "pulumi", "config", "set", pair[0], pair[1]); err != nil {
+			return err
+		}
 	}
-	if err := setSecret(infra, "geminiApiKey", key); err != nil {
-		return err
-	}
-	fmt.Println("Hosted Gemma access verified; API key saved as a KMS-encrypted Pulumi secret.")
 	return nil
 }

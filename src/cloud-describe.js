@@ -1,0 +1,11 @@
+import './style.css';
+import './language-ui.js';
+import {authConfig,credentials} from './account.js';
+import {classifyCloud,cloudAvailable} from './cloud.js';
+import {preparePhoto} from './image.js';
+import {languagePrompt,t} from './i18n.js';
+const $=id=>document.getElementById(id);let file,preview,busy=false,enabled=false;
+(async()=>{try{const config=await authConfig();if(config.enabled&&!credentials()){location.replace('./login.html');return;}enabled=await cloudAvailable();$('describe-submit').disabled=!enabled||!file||busy;if(!enabled)$('describe-status').textContent=t('AWS Gemma is not configured. Run the deployment wizard.');}catch(error){$('describe-status').textContent=error.message;}})();
+$('describe-photo').onchange=event=>{file=event.target.files[0];if(preview)URL.revokeObjectURL(preview);if(file){preview=URL.createObjectURL(file);$('describe-preview').src=preview;$('describe-preview').hidden=false;}$('describe-submit').disabled=!file||!enabled||busy;};
+$('describe-submit').onclick=async()=>{if(!file||busy||!enabled)return;busy=true;$('describe-submit').disabled=true;$('describe-photo').disabled=true;$('describe-status').textContent='Processing…';try{const photo=await preparePhoto(file,{centerCrop:true});const raw=$('describe-prompt').value.trim();if(!raw)throw Error('Enter a question or instruction for your photo.');const prompt=languagePrompt(raw);$('describe-result').textContent=await classifyCloud(photo.url,prompt,AbortSignal.timeout(30000));$('describe-status').textContent='';}catch(error){$('describe-status').textContent=error.message;}finally{busy=false;$('describe-submit').disabled=false;$('describe-photo').disabled=false;}};
+window.addEventListener('pagehide',()=>{if(preview)URL.revokeObjectURL(preview);});

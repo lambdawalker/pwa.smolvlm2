@@ -8,7 +8,7 @@ export function logEvent(event,details={}){
  return line;
 }
 export function installDiagnostics(){
- logEvent('page-start',{path:location.pathname,userAgent:navigator.userAgent,secureContext:globalThis.isSecureContext,webgpu:!!navigator.gpu});
+ logEvent('page-start',{path:location.pathname,userAgent:navigator.userAgent,secureContext:globalThis.isSecureContext,inference:'Amazon Bedrock'});
  const panel=document.createElement('details');panel.className='about';const title=document.createElement('summary');title.textContent='Troubleshooting logs';
  const help=document.createElement('p');help.textContent='If processing stalls, copy this report. Photos, filenames, prompts, and generated text are not included.';
  const copy=document.createElement('button');copy.className='quiet';copy.textContent='Copy diagnostic report';

@@ -11,5 +11,6 @@ function run(command,args,cwd=root,extra={}) {
 run(process.execPath,[process.env.npm_execpath,'run','build'],root,{BASE_PATH:'/'});
 const backend=fileURLToPath(new URL('../backend/',import.meta.url));
 mkdirSync(`${backend}/build`,{recursive:true});
-run('go',['build','-trimpath','-tags','lambda.norpc','-ldflags=-s -w','-o','build/bootstrap','./cmd/api'],backend,{GOOS:'linux',GOARCH:'arm64',CGO_ENABLED:'0'});
-run('go',['run','./cmd/package'],backend);
+// UI-only Git commits must not change the backend ZIP's content hash.
+run('go',['build','-buildvcs=false','-trimpath','-tags','lambda.norpc','-ldflags=-s -w','-o','build/bootstrap','./cmd/api'],backend,{GOOS:'linux',GOARCH:'arm64',CGO_ENABLED:'0'});
+run('go',['run','-buildvcs=false','./cmd/package'],backend);

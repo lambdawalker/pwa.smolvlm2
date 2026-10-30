@@ -53,7 +53,7 @@ func handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.API
 			response.Body = `{"error":"method not allowed"}`
 		} else {
 			response.StatusCode = 200
-			response.Body = `{"status":"ok","service":"little-lens","inference":"on-device-and-optional-cloud"}`
+			response.Body = `{"status":"ok","service":"audit","inference":"amazon-bedrock"}`
 		}
 	}
 	if req.RequestContext.HTTP.Method == "HEAD" {

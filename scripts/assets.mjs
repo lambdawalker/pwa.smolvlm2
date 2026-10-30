@@ -1,11 +1,10 @@
 import './defaults.mjs';
-import { mkdir, readdir, copyFile, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { deflateSync } from 'node:zlib';
-// Ship ONNX Runtime's matching binaries locally; no CDN dependency when offline.
-await mkdir('public/ort', {recursive:true});
-for (const name of await readdir('node_modules/onnxruntime-web/dist')) {
-  if (/^ort-wasm.*\.(wasm|mjs)$/.test(name)) await copyFile(`node_modules/onnxruntime-web/dist/${name}`, `public/ort/${name}`);
-}
+// Do not accidentally re-ship old ONNX files from a previous checkout.
+await rm('public/ort',{recursive:true,force:true});
+// Keep retired hashed bundles out of uploads and the offline precache.
+await rm('dist',{recursive:true,force:true});
 // Dependency-free PNG icons. A cream lens on a forest-green tile.
 function crc32(bytes) { let c=0xffffffff; for(const b of bytes){c^=b;for(let i=0;i<8;i++)c=(c>>>1)^((c&1)?0xedb88320:0);}return (c^0xffffffff)>>>0; }
 function chunk(type,data){const t=Buffer.from(type),n=Buffer.alloc(4),crc=Buffer.alloc(4);n.writeUInt32BE(data.length);crc.writeUInt32BE(crc32(Buffer.concat([t,data])));return Buffer.concat([n,t,data,crc]);}

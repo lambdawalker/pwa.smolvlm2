@@ -3,10 +3,10 @@
 # Saved browser preferences override these defaults where applicable.
 interface:
   language: en                 # en | es
-  model: gemma-cloud           # gemma-cloud | 256m | 500m | smolvlm-500m | moondream
+  model: gemma-cloud           # gemma-cloud (Amazon Bedrock)
   view: grid                   # grid | list
   autoCategorize: true
-  simultaneousImages: 2        # 1–3; local models always process one at a time
+  simultaneousImages: 2        # 1–3 parallel cloud requests
   leftHanded: false
   cloudConsent: true
   showImageDetails: false

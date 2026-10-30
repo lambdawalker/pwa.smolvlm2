@@ -1,8 +1,9 @@
-// Local development launcher: the Google credential is passed only to the API.
+// Local development launcher: AWS credentials are passed only to the Go API.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -11,8 +12,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
-	"golang.org/x/term"
+	"github.com/lambdawalker/pwa.smolvlm2/backend/internal/bedrock"
 )
 
 func main() {
@@ -25,7 +27,7 @@ func withoutSecrets(env []string) []string {
 	out := []string{}
 	for _, entry := range env {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(name, "GEMINI_API_KEY") || strings.EqualFold(name, "AWS_LAMBDA_RUNTIME_API") || strings.HasPrefix(strings.ToUpper(name), "VITE_") {
+		if strings.EqualFold(name, "GEMINI_API_KEY") || strings.EqualFold(name, "OPENAI_API_KEY") || strings.EqualFold(name, "HF_TOKEN") || strings.HasPrefix(strings.ToUpper(name), "AWS_") || strings.HasPrefix(strings.ToUpper(name), "BEDROCK_") || strings.HasPrefix(strings.ToUpper(name), "VITE_") {
 			continue
 		}
 		out = append(out, entry)
@@ -52,20 +54,45 @@ func run() error {
 		listener.Close()
 	}
 	fmt.Println("Audit — local development")
-	key := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	if key == "" {
-		fmt.Println("Google API key: https://aistudio.google.com/apikey")
-		fmt.Print("Google API key (hidden; Enter uses on-device models only): ")
-		value, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
-		if err != nil {
-			return fmt.Errorf("run this launcher in an interactive terminal, or set GEMINI_API_KEY")
-		}
-		key = strings.TrimSpace(string(value))
-	} else {
-		fmt.Println("Using GEMINI_API_KEY from the environment.")
+	var saved struct {
+		Profile string `json:"profile"`
+		Region  string `json:"region"`
 	}
+	if data, err := os.ReadFile(filepath.Join(root, ".deploy", "settings.json")); err == nil {
+		json.Unmarshal(data, &saved)
+	}
+	profile := os.Getenv("AWS_PROFILE")
+	if profile == "" && saved.Profile != "" && saved.Profile != "auto" {
+		profile = saved.Profile
+		os.Setenv("AWS_PROFILE", profile)
+	}
+	region := os.Getenv("BEDROCK_REGION")
+	if region == "" {
+		region = saved.Region
+	}
+	if region == "" {
+		region = "us-east-1"
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	client, err := bedrock.New(checkCtx, region)
+	if err != nil {
+		return err
+	}
+	if err = client.CheckModel(checkCtx); err != nil {
+		return fmt.Errorf("AWS Gemma access is not ready: %w; sign in with aws sso login --profile YOUR_PROFILE and verify Bedrock permissions", err)
+	}
+	fmt.Printf("Amazon Bedrock • %s • %s. No Google API key is used.\n", bedrock.Model, region)
 	env := withoutSecrets(os.Environ())
+	backendEnv := []string{}
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		upper := strings.ToUpper(name)
+		if upper == "GEMINI_API_KEY" || upper == "OPENAI_API_KEY" || upper == "HF_TOKEN" || upper == "AWS_LAMBDA_RUNTIME_API" || strings.HasPrefix(upper, "VITE_") {
+			continue
+		}
+		backendEnv = append(backendEnv, entry)
+	}
 	// npm.cmd must be launched through cmd.exe on Windows.
 	npm := exec.CommandContext(ctx, "npm", "ci")
 	if runtime.GOOS == "windows" {
@@ -96,7 +123,7 @@ func run() error {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.CommandContext(ctx, "go", "build", "-o", binary, "./cmd/api")
+	build := exec.CommandContext(ctx, "go", "build", "-buildvcs=false", "-o", binary, "./cmd/api")
 	build.Dir = filepath.Join(root, "backend")
 	build.Env = env
 	build.Stdout = os.Stdout
@@ -105,7 +132,7 @@ func run() error {
 		return fmt.Errorf("API build failed: %w", err)
 	}
 	api := exec.CommandContext(ctx, binary)
-	api.Env = append(env, "GEMINI_API_KEY="+key, "LISTEN_ADDR=127.0.0.1:8080", "SITE_ORIGIN=http://localhost:5173")
+	api.Env = append(backendEnv, "BEDROCK_ENABLED=true", "BEDROCK_REGION="+region, "LISTEN_ADDR=127.0.0.1:8080", "SITE_ORIGIN=http://localhost:5173")
 	api.Stdout = os.Stdout
 	api.Stderr = os.Stderr
 	vite := exec.CommandContext(ctx, "node", filepath.Join(root, "node_modules", "vite", "bin", "vite.js"), "--host", "127.0.0.1", "--port", "5173", "--strictPort")

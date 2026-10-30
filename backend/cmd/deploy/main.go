@@ -275,7 +275,7 @@ func wizard() error {
 			return err
 		}
 	}
-	if err = setupGemma(infra); err != nil {
+	if err = setupBedrock(infra, region); err != nil {
 		return err
 	}
 	fmt.Println("3/6 Check Cloudflare DNS access")
@@ -354,7 +354,7 @@ func wizard() error {
 		}
 	}
 	fmt.Printf("\nStack: %s\nRegion: %s\nURL: https://%s\nCloudflare: DNS-only CNAME, HTTPS certificate validation record\n", stack, region, domain)
-	fmt.Println("4/6 Install dependencies, test, and build")
+	fmt.Println("4/6 Install dependencies, test, and build (cloud-only frontend)")
 	if err = run(root, "npm", "ci"); err != nil {
 		return err
 	}

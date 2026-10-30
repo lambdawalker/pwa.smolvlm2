@@ -61,13 +61,22 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	accountEnv["GEMINI_API_KEY"] = cfg.GetSecret("geminiApiKey")
+	inferencePolicy, inferenceRegion, inferenceEnabled, err := bedrockInfrastructure(ctx, role)
+	if err != nil {
+		return err
+	}
+	accountEnv["BEDROCK_ENABLED"] = pulumi.String(fmt.Sprint(inferenceEnabled))
+	accountEnv["BEDROCK_REGION"] = pulumi.String(inferenceRegion)
+	apiDependencies := []pulumi.Resource{policy}
+	if inferencePolicy != nil {
+		apiDependencies = append(apiDependencies, inferencePolicy)
+	}
 	accountEnv["SITE_ORIGIN"] = pulumi.String("https://" + cfg.Get("domain"))
 	artifactBucket, artifact, codeHash, err := lambdaArtifact(ctx)
 	if err != nil {
 		return err
 	}
-	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(29), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn([]pulumi.Resource{policy}))
+	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(29), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn(apiDependencies))
 	if err != nil {
 		return err
 	}
@@ -95,7 +104,7 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = apigatewayv2.NewStage(ctx, "api-stage", &apigatewayv2.StageArgs{ApiId: api.ID(), Name: pulumi.String("$default"), AutoDeploy: pulumi.Bool(true), DefaultRouteSettings: &apigatewayv2.StageDefaultRouteSettingsArgs{ThrottlingBurstLimit: pulumi.Int(20), ThrottlingRateLimit: pulumi.Float64(10)}}, pulumi.DependsOn([]pulumi.Resource{route}))
+	stage, err := apigatewayv2.NewStage(ctx, "api-stage", &apigatewayv2.StageArgs{ApiId: api.ID(), Name: pulumi.String("$default"), AutoDeploy: pulumi.Bool(true), DefaultRouteSettings: &apigatewayv2.StageDefaultRouteSettingsArgs{ThrottlingBurstLimit: pulumi.Int(20), ThrottlingRateLimit: pulumi.Float64(10)}}, pulumi.DependsOn([]pulumi.Resource{route}))
 	if err != nil {
 		return err
 	}
@@ -153,6 +162,9 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
+	var staticAssets []pulumi.Resource
+	var shells []string
+	backendReady := []pulumi.Resource{fn, api, stage, route, integration, distribution}
 	err = filepath.WalkDir("../dist", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -165,17 +177,37 @@ func deploy(ctx *pulumi.Context) error {
 			return err
 		}
 		key = filepath.ToSlash(key)
+		if strings.HasSuffix(key, ".html") || key == "sw.js" || key == "manifest.webmanifest" {
+			shells = append(shells, path)
+			return nil
+		}
 		contentType := assetContentType(key)
 		cacheControl := "no-cache"
 		if strings.HasPrefix(key, "assets/") {
 			cacheControl = "public, max-age=31536000, immutable"
 		}
-		_, err = s3.NewBucketObjectv2(ctx, "file-"+key, &s3.BucketObjectv2Args{Bucket: bucket.ID(), Key: pulumi.String(key), Source: pulumi.NewFileAsset(path), ContentType: pulumi.String(contentType), CacheControl: pulumi.String(cacheControl)})
+		asset, err := s3.NewBucketObjectv2(ctx, "file-"+key, &s3.BucketObjectv2Args{Bucket: bucket.ID(), Key: pulumi.String(key), Source: pulumi.NewFileAsset(path), ContentType: pulumi.String(contentType), CacheControl: pulumi.String(cacheControl)}, pulumi.DependsOn(backendReady))
+		if err == nil {
+			staticAssets = append(staticAssets, asset)
+		}
 		return err
 	})
 	if err != nil {
 		return err
 	}
+	for _, path := range shells {
+		key, err := filepath.Rel("../dist", path)
+		if err != nil {
+			return err
+		}
+		key = filepath.ToSlash(key)
+		_, err = s3.NewBucketObjectv2(ctx, "file-"+key, &s3.BucketObjectv2Args{Bucket: bucket.ID(), Key: pulumi.String(key), Source: pulumi.NewFileAsset(path), ContentType: pulumi.String(assetContentType(key)), CacheControl: pulumi.String("no-cache")}, pulumi.DependsOn(append(backendReady, staticAssets...)))
+		if err != nil {
+			return err
+		}
+	}
+	ctx.Export("inferenceModel", pulumi.String(awsGemmaModel))
+	ctx.Export("inferenceRegion", pulumi.String(inferenceRegion))
 	siteURL := pulumi.Sprintf("https://%s", distribution.DomainName)
 	if domain != "" {
 		_, err = cloudflare.NewDnsRecord(ctx, "site-dns", &cloudflare.DnsRecordArgs{ZoneId: pulumi.String(cfg.Require("cloudflareZoneId")), Name: pulumi.String(domain), Content: distribution.DomainName, Type: pulumi.String("CNAME"), Ttl: pulumi.Float64(60), Proxied: pulumi.Bool(false)})
