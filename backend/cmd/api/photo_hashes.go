@@ -252,19 +252,27 @@ func trashDuplicatePhotos(ctx context.Context, store recordStore, user string, s
 	}
 	sort.Slice(extras, func(i, j int) bool { return extras[i].ID < extras[j].ID })
 	moved := 0
+	undoPhotos := []map[string]any{}
 	for _, p := range extras {
 		if moved >= 20 {
 			break
 		}
 		response := trashPhoto(ctx, store, user, session, p, Photo{Revision: p.Revision})
 		if response.StatusCode != 200 {
-			return response
+			var failure map[string]any
+			json.Unmarshal([]byte(response.Body), &failure)
+			if failure == nil {
+				failure = map[string]any{"error": "Duplicate cleanup interrupted."}
+			}
+			failure["undoPhotos"] = undoPhotos
+			return apiJSON(response.StatusCode, failure)
 		}
+		undoPhotos = append(undoPhotos, map[string]any{"before": p, "revision": p.Revision + 1})
 		moved++
 	}
 	status := 200
 	if len(extras) > moved {
 		status = 202
 	}
-	return apiJSON(status, map[string]any{"moved": moved, "remaining": len(extras) > moved, "unindexed": unindexed})
+	return apiJSON(status, map[string]any{"undoPhotos": undoPhotos, "moved": moved, "remaining": len(extras) > moved, "unindexed": unindexed})
 }

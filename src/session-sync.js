@@ -7,7 +7,7 @@ export async function sessionAPI(path='',method='GET',body,{conditional=false,si
  const response=await authorizedFetch('/api/sessions'+path,{method,headers,signal,...(body?{body:JSON.stringify(body)}:{})});
  if(response.status===304)return {unchanged:true};
  let data;try{data=await response.json();}catch{throw Error('Session service returned an invalid response.');}
- if(!response.ok){const error=new Error(data.error||'Could not sync session.');error.status=response.status;throw error;}
+ if(!response.ok){const error=new Error(data.error||'Could not sync session.');error.status=response.status;error.data=data;throw error;}
  const etag=response.headers?.get('etag');if(method==='GET'&&etag)sessionVersions.set(path,{etag,time:Date.now()});
  return data;
 }
@@ -32,7 +32,7 @@ export async function savePhoto(session,item,changes){
  const payload={revision:item.revision,state:item.state,category:item.category||'',description:item.description||'',rawOutput:item.rawOutput||'',...changes};
  try{for(let attempt=0;attempt<2;attempt++){
   try{const saved=await sessionAPI(`/${session}/photos/${item.remoteId}`,'PATCH',payload);
-   Object.assign(item,{revision:saved.revision,state:saved.state,category:saved.category,description:saved.description,rawOutput:saved.rawOutput,conflict:!!saved.conflict,expiresAt:saved.expiresAt});
+   Object.assign(item,{userRevision:saved.userRevision,jobId:saved.jobId,promptHash:saved.promptHash,model:saved.inferenceModel,revision:saved.revision,state:saved.state,category:saved.category,description:saved.description,rawOutput:saved.rawOutput,conflict:!!saved.conflict,expiresAt:saved.expiresAt});
    item.error=saved.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':'';return saved;
   }catch(error){
    if(error.status===404){item.shredded=true;return;}
@@ -47,8 +47,8 @@ export async function mergePhotos(existing,photos,{knownAtStart}={}){
  if(photo.state==='uploading'){if(item)result.push(item);continue;}
  if(!item)item={remoteId:photo.id,file:{name:photo.id,type:photo.mime,size:photo.bytes}};
  if(item.reprocess&&(photo.state==='trash'||photo.conflict)&&photo.revision>=item.revision)delete item.reprocess;
- if(!item.dirty&&!item.reprocess&&(!item.revision||photo.revision>=item.revision))Object.assign(item,{jobId:photo.jobId,promptHash:photo.promptHash,model:photo.inferenceModel,processingAttempts:photo.processingAttempts,sourceHash:photo.sourceHash,dHash:photo.dHash,hashVersion:photo.hashVersion,sha256Verified:photo.sha256Verified,revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,conflict:!!photo.conflict,expiresAt:photo.expiresAt,error:photo.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':photo.processingError||''});
- item.preparedUrl=photo.preparedUrl;item.thumbnail=item.exportImage||photo.preparedUrl;item.originalUrl=photo.originalUrl;result.push(item);
+ if(!item.dirty&&!item.reprocess&&(!item.revision||photo.revision>=item.revision))Object.assign(item,{userRevision:photo.userRevision,jobId:photo.jobId,promptHash:photo.promptHash,model:photo.inferenceModel,processingAttempts:photo.processingAttempts,sourceHash:photo.sourceHash,dHash:photo.dHash,hashVersion:photo.hashVersion,sha256Verified:photo.sha256Verified,revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,conflict:!!photo.conflict,expiresAt:photo.expiresAt,error:photo.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':photo.processingError||''});
+ item.preparedUrl=photo.preparedUrl;const nextThumbnail=item.exportImage||photo.preparedUrl;if(!item.thumbnail||item.thumbnail.split('?')[0]!==nextThumbnail?.split('?')[0])item.thumbnail=nextThumbnail;item.originalUrl=photo.originalUrl;result.push(item);
  }
  for(const item of existing){if(!item.remoteId){result.push(item);continue;}if(!seen.has(item.remoteId)){if(!item.shredded&&knownAtStart&&!knownAtStart.has(item.remoteId))result.push(item);else item.shredded=true;}}
  return result;

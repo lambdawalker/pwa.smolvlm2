@@ -54,3 +54,14 @@ svg[hidden]{display:none!important}.export-controls>.setting-toggle{display:flex
 .action-bar-secondary{display:flex;flex-wrap:wrap;gap:6px 12px;padding-inline:0}.action-bar-secondary .quiet{font-size:13px;padding:8px 10px}
 
 .batch-summary .sync-cloud{margin-left:auto;flex-shrink:0;padding:6px;min-height:36px;background:transparent;color:#16803d}.sync-cloud[data-updates=true]{color:#b42318}.sync-cloud:disabled{opacity:1}.sync-cloud:hover:not(:disabled){background:#164f4610}html.left-handed .batch-summary .sync-cloud{order:-1;margin-left:0;margin-right:auto}
+/* Busy icons replace the overall progress bar. Respect reduced-motion preferences. */
+[data-active=true] svg,#upload-icon[data-active=true]{animation:activity-pulse 1.1s ease-in-out infinite}
+@keyframes activity-pulse{50%{opacity:.35;transform:translateY(-2px)}}
+#clear{position:relative;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#clear::after{content:'';position:absolute;inset:auto 0 0;height:4px;background:currentColor;transform:scaleX(0);transform-origin:left;pointer-events:none}
+#clear[data-holding=true]::after{animation:delete-hold var(--hold-duration,3s) linear forwards}
+@keyframes delete-hold{to{transform:scaleX(1)}}
+#delete-dialog{max-width:min(420px,calc(100vw - 32px));border:1px solid #cbd8ce;border-radius:16px;padding:24px;background:#fffefa;color:#203a34}
+#delete-dialog h2{font:600 20px/1.4 system-ui;margin-top:0}
+.dialog-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}
+@media(prefers-reduced-motion:reduce){[data-active=true] svg,#upload-icon[data-active=true]{animation:none;opacity:.65}}

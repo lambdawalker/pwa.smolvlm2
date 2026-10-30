@@ -24,6 +24,13 @@ func TestBackgroundJobLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	encodedPhoto, _ := json.Marshal(p)
+	var metadata map[string]any
+	json.Unmarshal(encodedPhoto, &metadata)
+	if metadata["userRevision"] != float64(p.Revision) {
+		t.Fatal("enqueue must mark user revision", metadata)
+	}
+	queuedUserRevision := p.Revision
 	oldInfer := inferStoredPhoto
 	defer func() { inferStoredPhoto = oldInfer }()
 	calls := 0
@@ -44,6 +51,11 @@ func TestBackgroundJobLifecycle(t *testing.T) {
 	json.Unmarshal(data, &p)
 	if p.State != "done" || p.Description != "A room." {
 		t.Fatal(p)
+	}
+	encodedPhoto, _ = json.Marshal(p)
+	json.Unmarshal(encodedPhoto, &metadata)
+	if metadata["userRevision"] != float64(queuedUserRevision) {
+		t.Fatal("automatic result changed the user revision", metadata)
 	}
 	// A newer manual change wins over an in-flight result.
 	next, err := enqueuePhoto(ctx, m, "alice", session, &p, p.Revision, defaultCategoryPrompt, true)
@@ -201,6 +213,27 @@ func TestAutomaticUploadCreatesJob(t *testing.T) {
 	jobs, _ = m.List(ctx, sessionOwner("alice", s.ID), "JOB#")
 	if len(jobs) != 2 {
 		t.Fatal("explicit reclassification did not create a new job")
+	}
+	json.Unmarshal([]byte(response.Body), &p)
+	queuedID := p.JobID
+	response = call("PATCH", "/photos/"+p.ID, Photo{State: "error", Revision: p.Revision})
+	var restored Photo
+	json.Unmarshal([]byte(response.Body), &restored)
+	if response.StatusCode != 200 || restored.JobID != "" || restored.UserRevision != restored.Revision {
+		t.Fatal("manual Undo did not fence the queued job", response)
+	}
+	inferStoredPhoto = func(context.Context, recordStore, ClassificationJob) (string, error) {
+		t.Fatal("cancelled job invoked the provider")
+		return "", nil
+	}
+	for _, data := range jobs {
+		var oldJob ClassificationJob
+		json.Unmarshal(data, &oldJob)
+		if oldJob.ID == queuedID {
+			if err := processClassification(ctx, m, oldJob); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }
 func TestFailedAtomicJobDoesNotMutatePhoto(t *testing.T) {

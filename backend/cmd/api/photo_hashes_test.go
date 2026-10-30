@@ -84,6 +84,9 @@ func TestPhotoHashesDeduplicateAndBackfill(t *testing.T) {
 	if r.StatusCode != 200 || !strings.Contains(r.Body, `"moved":1`) {
 		t.Fatal("existing duplicates not moved to Trash", r)
 	}
+	if !strings.Contains(r.Body, `"undoPhotos":[{"before":`) {
+		t.Fatal("cleanup must return snapshots for Undo", r)
+	}
 	kept, _ := m.Get(context.Background(), sessionOwner("alice", session.ID), "PHOTO#"+first.ID)
 	if !strings.Contains(string(kept), `"description":"Keep this result."`) || !strings.Contains(string(kept), `"state":"done"`) {
 		t.Fatal("categorized copy was not retained")

@@ -103,6 +103,6 @@ Jobs use 90-second conditional leases, a 60-second worker timeout, 360-second qu
 
 Set `classificationConcurrency` to 2 (default) or 3 in Pulumi. These limits apply across sessions in the stack. API Lambda remains at 29 seconds for HTTP requests; the separate worker continues after the browser closes. Both use the existing IAM role with scoped table, private bucket, queue, stream and Bedrock permissions. Provider requests, public HTTP clients and the browser cannot invoke the worker through API Gateway.
 
-After deployment, upload a photo, wait for its upload to finish, close the browser and reopen the session later. Press the cloud icon to apply the saved result. Test retry/reclassification, deleting a processing photo, and a second device changing its category. Unit tests use simulated storage/provider responses; actual AWS event delivery and model access require this deployed smoke test.
+After deployment, upload a photo, wait for its upload to finish, close the browser and reopen the session later. The saved result should appear automatically within the next status check (normally five seconds). Test retry/reclassification, deleting a processing photo, and a second device changing its category. Unit tests use simulated storage/provider responses; actual AWS event delivery and model access require this deployed smoke test.
 
 References: https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html and https://docs.aws.amazon.com/lambda/latest/dg/with-ddb.html

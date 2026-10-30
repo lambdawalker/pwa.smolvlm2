@@ -6,6 +6,7 @@ const fail=message=>{throw new Error(`Invalid categorization-defaults.yaml: ${me
 function choice(object,key,values){if(!values.includes(object?.[key]))fail(`${key} must be one of ${values.join(', ')}`);}
 function integer(object,key,min,max){if(!Number.isInteger(object?.[key])||object[key]<min||object[key]>max)fail(`${key} must be an integer from ${min} to ${max}`);}
 const i=defaults?.interface,d=defaults?.document;
+integer(i,'undoLimit',1,100);integer(i,'deleteHoldSeconds',2,3);
 choice(i,'language',['en','es']);choice(i,'model',['gemma-cloud']);choice(i,'view',['grid','list']);
 for(const key of ['leftHanded','cloudConsent','showImageDetails','showTroubleshooting'])if(typeof i[key]!=='boolean')fail(`${key} must be true or false`);
 if(typeof i.prompt!=='string'||!i.prompt.trim()||i.prompt.length>850)fail('prompt must contain 1–850 characters (leaving room for the Spanish instruction)');

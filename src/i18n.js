@@ -48,3 +48,14 @@ Object.assign(ES,{'Restore to category':'Restaurar a una categoría'});
 Object.assign(ES,{'Empty Trash permanently':'Vaciar la papelera permanentemente'});
 
 Object.assign(ES,{'Cloud model':'Modelo en la nube','Prepared photos and your prompt are sent to Amazon Bedrock for processing. Internet is required.':'Las fotos preparadas y tus instrucciones se procesan en Amazon Bedrock. Se requiere internet.','I agree to process selected photos and the prompt with AWS.':'Acepto procesar las fotos seleccionadas y las instrucciones con AWS.','Precision: AWS-managed (not disclosed)':'Precisión: administrada por AWS (no publicada)','AWS Gemma is not configured. Run the deployment wizard.':'Gemma en AWS no está configurado. Ejecuta el asistente de despliegue.'});
+
+Object.assign(ES,{
+'Undo':'Deshacer','Undo history limit':'Límite del historial de deshacer','Bulk delete hold time':'Tiempo de pulsación para eliminar todo','2 seconds':'2 segundos','3 seconds':'3 segundos','seconds':'segundos',
+'Hold to delete all':'Mantén pulsado para eliminar todo','Hold to shred all':'Mantén pulsado para destruir todo','Delete all photos?':'¿Eliminar todas las fotos?','Shred all photos?':'¿Destruir todas las fotos?',
+'Delete all':'Eliminar todo','Shred all':'Destruir todo','Permanently deletes photos in Trash. This cannot be undone.':'Elimina permanentemente las fotos de la papelera. No se puede deshacer.',
+'Moves photos to Trash for 2 days. You can undo this.':'Mueve las fotos a la papelera durante 2 días. Puedes deshacer esta acción.',
+'Change category':'Cambiar categoría','Change settings':'Cambiar configuración','Change prompt':'Cambiar instrucciones','Change view':'Cambiar vista','Move to Trash':'Mover a la papelera',
+'Open the original session to undo this action.':'Abre la sesión original para deshacer esta acción.','This photo changed in the cloud. Undo skipped to protect newer changes.':'La foto cambió en la nube. Se omitió deshacer para proteger los cambios recientes.',
+'Synchronized':'Sincronizado','Syncing updates…':'Sincronizando cambios…','Could not sync. Press to retry.':'No se pudo sincronizar. Pulsa para reintentar.'
+});
+Object.assign(ES,{'Settings are saved on this device. Undo history lasts until this page is closed or reloaded.':'La configuración se guarda en este dispositivo. El historial de deshacer dura hasta cerrar o recargar esta página.'});

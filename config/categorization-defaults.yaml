@@ -6,6 +6,8 @@ interface:
   model: gemma-cloud           # gemma-cloud (Amazon Bedrock)
   view: grid                   # grid | list
   leftHanded: false
+  undoLimit: 20               # 1–100 actions, kept while this page is open
+  deleteHoldSeconds: 3        # 2 | 3, hold before bulk delete confirmation
   cloudConsent: true
   showImageDetails: false
   showTroubleshooting: false

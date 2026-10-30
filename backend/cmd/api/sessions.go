@@ -26,6 +26,7 @@ type Session struct {
 	Deleting bool   `json:"deleting,omitempty"`
 }
 type Photo struct {
+	UserRevision       int    `json:"userRevision,omitempty"`
 	PromptHash         string `json:"promptHash,omitempty"`
 	InferenceModel     string `json:"inferenceModel,omitempty"`
 	JobID              string `json:"jobId,omitempty"`
@@ -220,6 +221,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		if p.CloudConsent && !validJobPrompt(p.InferencePrompt) {
 			return cloudError(400, "Enter a categorization prompt of 1–1000 characters.")
 		}
+		p.UserRevision = 0
 		p.JobID = ""
 		p.ProcessingError = ""
 		p.ProcessingAttempts = 0
@@ -346,6 +348,8 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 					p.SHA256Verified = true
 				}
 			}
+			// Manual updates fence any queued or in-flight result, including Undo.
+			p.JobID = ""
 			p.State = in.State
 			p.ExpiresAt = 0
 			p.Conflict = false
@@ -357,6 +361,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			p.Description = in.Description
 			p.RawOutput = in.RawOutput
 			p.Revision++
+			p.UserRevision = p.Revision
 			p.Updated = time.Now().UTC().Format(time.RFC3339Nano)
 			if p.State == "pending" && p.CloudConsent && p.JobID == "" {
 				if _, err := enqueuePhoto(ctx, store, user, session, &p, expected, p.InferencePrompt, true); err != nil {

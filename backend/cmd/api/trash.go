@@ -18,6 +18,7 @@ type trashRecord struct {
 func shredPhoto(ctx context.Context, store recordStore, user, sid string, p Photo) error {
 	p.State = "shredded"
 	p.Revision++
+	p.UserRevision = p.Revision
 	p.ExpiresAt = 0
 	data, _ := json.Marshal(p)
 	if err := store.MarkShredded(ctx, sessionOwner(user, sid), "PHOTO#"+p.ID, data); err != nil {
@@ -48,6 +49,7 @@ func trashPhoto(ctx context.Context, store recordStore, user string, session Ses
 		p.ExpiresAt = time.Now().Add(trashRetention).Unix()
 	}
 	p.Revision++
+	p.UserRevision = p.Revision
 	p.Updated = time.Now().UTC().Format(time.RFC3339Nano)
 	if err := saveSessionPhoto(ctx, store, user, session, p, expected); err != nil {
 		return storeError(err)
@@ -79,6 +81,7 @@ func purgeTrash(ctx context.Context, store recordStore, now int64) error {
 			expected := p.Revision
 			p.State = "shredded"
 			p.Revision++
+			p.UserRevision = p.Revision
 			data, _ = json.Marshal(p)
 			if err := store.Put(ctx, record.Owner, record.Key, data, p.Revision, expected); err != nil {
 				if err == errConflict {

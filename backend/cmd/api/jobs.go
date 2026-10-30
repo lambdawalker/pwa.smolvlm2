@@ -58,6 +58,7 @@ func enqueuePhoto(ctx context.Context, store recordStore, user string, session S
 	next.ProcessingAttempts = 0
 	next.Conflict = false
 	next.Revision = expected + 1
+	next.UserRevision = next.Revision
 	next.Updated = time.Now().UTC().Format(time.RFC3339Nano)
 	if err := store.PutPhotoJob(ctx, user, session, next, expected, job); err != nil {
 		return ClassificationJob{}, err

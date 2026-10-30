@@ -5,6 +5,8 @@ export const defaults = {
     "model": "gemma-cloud",
     "view": "grid",
     "leftHanded": false,
+    "undoLimit": 20,
+    "deleteHoldSeconds": 3,
     "cloudConsent": true,
     "showImageDetails": false,
     "showTroubleshooting": false,
