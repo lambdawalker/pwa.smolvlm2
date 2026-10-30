@@ -12,7 +12,7 @@ export async function startSessionsPage({document,location,api=sessionAPI,config
  function controls(){for(const id of ['create-session','refresh-sessions','create-session-name','save-session-name','confirm-delete-session'])$(id).disabled=busy||refreshing||!ready;}
  function draw(){
   controls();$('session-list').replaceChildren();$('no-sessions').hidden=sessions.length!==0;
-  for(const session of sessions){
+  for(const session of sessions.filter(s=>s.name.toLocaleLowerCase().includes(($('session-search')?.value||'').trim().toLocaleLowerCase()))){
    const row=document.createElement('article');row.className='session-row';
    const info=document.createElement('div');info.className='session-row-info';const name=document.createElement('h3');name.textContent=session.name;info.append(name);
    const date=document.createElement('p');date.className='small';date.textContent=new Date(session.created).toLocaleString(getLanguage());info.append(date);
@@ -34,6 +34,7 @@ export async function startSessionsPage({document,location,api=sessionAPI,config
  $('cancel-rename').onclick=()=>$('rename-session-dialog').close();
  $('cancel-delete-session').onclick=()=>$('delete-session-dialog').close();
  $('confirm-delete-session').onclick=()=>{const session=selected;if(!session)return;return change(async()=>{$('delete-session-dialog').close();message('Deleting session…');await deleteSharedSession(session.id,api);});};
+ if($('session-search'))$('session-search').oninput=draw;
  $('refresh-sessions').onclick=()=>refresh();
  $('sign-out').onclick=logout;controls();
  try{const auth=await config();if(!auth.enabled){message('Shared sessions require the AWS account service.');return;}if(!account()){location.replace('./login.html');return;}

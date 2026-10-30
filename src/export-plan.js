@@ -9,7 +9,7 @@ export function exportPlan(items,{type=defaults.document.type,rows=defaults.docu
  if(!Number.isInteger(columns)||columns<1||columns>16)throw Error('Choose 1–16 columns.');
  const perPage=rows*columns;
  const pages=[];
- for(const category of CATEGORIES){
+ for(const category of [...new Set([...CATEGORIES,...items.filter(i=>i.state==='done').map(i=>i.category)])]){
   const group=items.filter(item=>item.state==='done'&&item.category===category);
   for(let i=0;i<group.length;i+=perPage)pages.push({category,part:i/perPage+1,items:group.slice(i,i+perPage).map(item=>({image:item.exportImage,description:item.description||'No description available.'}))});
  }

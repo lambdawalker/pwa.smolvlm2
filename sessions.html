@@ -8,7 +8,7 @@
 <div class="session-list-heading"><h2>Your sessions</h2><button id="refresh-sessions" class="quiet" disabled>Refresh</button></div>
 <p id="sessions-status" role="status" aria-live="polite">Loading sessions…</p>
 <p id="no-sessions" hidden>No sessions yet. Create one to add photos.</p>
-<div id="session-list" class="session-list"></div>
+<input id="session-search" type="search" placeholder="Search sessions" aria-label="Search sessions"><div id="session-list" class="session-list"></div>
 </main>
 <dialog id="rename-session-dialog" class="session-management-dialog"><form id="rename-session-form"><h2>Rename session</h2><label>Session name<input id="rename-session-name" required maxlength="80" autocomplete="off"></label><div class="session-dialog-actions"><button type="button" id="cancel-rename" class="quiet">Cancel</button><button id="save-session-name" class="primary">Save</button></div><p id="rename-status" role="status"></p></form></dialog>
 <dialog id="delete-session-dialog" class="session-management-dialog"><h2>Delete session?</h2><p id="delete-session-name"></p><p>This permanently deletes the session, its photos, and results from all your devices.</p><div class="session-dialog-actions"><button id="cancel-delete-session" class="quiet">Cancel</button><button id="confirm-delete-session" class="danger-button">Delete session</button></div></dialog>

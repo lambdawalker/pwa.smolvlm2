@@ -19,8 +19,9 @@ func sessionRevision(s Session) int {
 
 func renameSession(ctx context.Context, store recordStore, user string, session Session, body []byte) events.APIGatewayV2HTTPResponse {
 	var in struct {
-		Name     string `json:"name"`
-		Revision int    `json:"revision"`
+		Categories *[]string `json:"categories"`
+		Name       string    `json:"name"`
+		Revision   int       `json:"revision"`
 	}
 	if json.Unmarshal(body, &in) != nil {
 		return cloudError(400, "Enter a session name.")
@@ -33,6 +34,17 @@ func renameSession(ctx context.Context, store recordStore, user string, session 
 		return storeError(errConflict)
 	}
 	expected := sessionRevision(session)
+	if in.Categories != nil {
+		if len(*in.Categories) > 24 {
+			return cloudError(400, "Use at most 24 custom categories.")
+		}
+		for _, c := range *in.Categories {
+			if strings.TrimSpace(c) == "" || utf8.RuneCountInString(c) > 60 || c == "Trash" || c == "Waiting" || c == "Needs attention" || c == "View all" {
+				return cloudError(400, "Invalid category.")
+			}
+		}
+		session.Categories = *in.Categories
+	}
 	session.Name = in.Name
 	session.Revision = expected + 1
 	if err := saveRecord(ctx, store, "USER#"+user, "SESSION#"+session.ID, session, session.Revision, expected); err != nil {

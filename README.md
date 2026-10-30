@@ -126,3 +126,11 @@ Select **PNG images (.png)** in Categorization settings, then use the download b
 PNGs contain a tightly packed photo grid, category heading and optional descriptions below the photos. There are no borders or page backgrounds; the small internal gutters are transparent. Empty trailing rows/columns and transparent outer padding are trimmed from each page. Images retain their page's photo size rather than stretching a partial page to fill a whole sheet.
 
 Print density is embedded as 300 DPI. Portrait exports fit within 6.25 × 8.75 inches; landscape exports fit within 8.75 × 6.25 inches before the final content trim. These bounds accommodate standard Letter/A4 Word text areas in the matching orientation. Word templates with custom margins, existing content or insertion-size preferences can still require adjustment. PNG is a flattened image; use Word export when editable captions and headings are needed.
+
+### Photo tools
+
+Use Select for bulk category changes, Trash moves, reclassification, and exporting a selection. Click a description to edit it (180 characters). Drag cards to reorder on desktop; the up/down buttons work on touch devices. Ordering is saved with each photo and used for exports. Search filters descriptions/categories; the Sessions page also searches session names.
+
+Categories adds custom session categories alongside the standard categories. New classification jobs include those categories; existing jobs/photos retain their current results. Preview renders the same image grid and category pagination; Word/PowerPoint margins can differ from the grid preview.
+
+Pending original files are saved in IndexedDB, scoped to the signed-in account and session. Reopen the session and use Resume uploads after interruption. Completed uploads and duplicates remove their pending record. Browser storage eviction, private browsing restrictions, or a full disk can prevent recovery; an on-screen notice explains when the page must remain open. Audit does not promise uploads will continue after the browser closes.

@@ -111,9 +111,7 @@ func classificationResult(text string) (string, string) {
 	if json.Unmarshal([]byte(text), &value) != nil || strings.TrimSpace(value.Description) == "" {
 		return "", ""
 	}
-	switch value.Category {
-	case "Indoors", "Outdoors", "Documents", "Computer screens":
-	default:
+	if strings.TrimSpace(value.Category) == "" || len([]rune(value.Category)) > 60 {
 		return "", ""
 	}
 	description := []rune(strings.TrimSpace(value.Description))

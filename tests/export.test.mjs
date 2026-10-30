@@ -77,3 +77,5 @@ test('photo geometry maximizes square photos within cells with positive gutters'
   const g=gridGeometry(6.7,12.05,columns,rows,description);assert.ok(g.gap>0);assert.ok(g.size<=g.w);assert.ok(g.size+g.text<=g.h);assert.ok(Math.abs(g.size-Math.min(g.w,g.h-g.text-(description?.035:0)))<.001);
  }
 });
+
+test('custom categories export to their own pages in supplied photo order',()=>{const a={...item('Plumbing'),description:'First'},b={...item('Plumbing'),description:'Second'};const plan=exportPlan([b,a]);assert.equal(plan.pages[0].category,'Plumbing');assert.deepEqual(plan.pages[0].items.map(i=>i.description),['Second','First']);});

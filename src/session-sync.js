@@ -29,10 +29,10 @@ export async function uploadPhoto(session,file,photo,settings={}){
 export async function savePhoto(session,item,changes){
  if(!item.remoteId||item.shredded)return;
  item.dirty=true;
- const payload={revision:item.revision,state:item.state,category:item.category||'',description:item.description||'',rawOutput:item.rawOutput||'',...changes};
+ const payload={order:item.order||0,revision:item.revision,state:item.state,category:item.category||'',description:item.description||'',rawOutput:item.rawOutput||'',...changes};
  try{for(let attempt=0;attempt<2;attempt++){
   try{const saved=await sessionAPI(`/${session}/photos/${item.remoteId}`,'PATCH',payload);
-   Object.assign(item,{userRevision:saved.userRevision,jobId:saved.jobId,promptHash:saved.promptHash,model:saved.inferenceModel,revision:saved.revision,state:saved.state,category:saved.category,description:saved.description,rawOutput:saved.rawOutput,conflict:!!saved.conflict,expiresAt:saved.expiresAt});
+   Object.assign(item,{order:saved.order,userRevision:saved.userRevision,jobId:saved.jobId,promptHash:saved.promptHash,model:saved.inferenceModel,revision:saved.revision,state:saved.state,category:saved.category,description:saved.description,rawOutput:saved.rawOutput,conflict:!!saved.conflict,expiresAt:saved.expiresAt});
    item.error=saved.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':'';return saved;
   }catch(error){
    if(error.status===404){item.shredded=true;return;}
@@ -47,7 +47,7 @@ export async function mergePhotos(existing,photos,{knownAtStart}={}){
  if(photo.state==='uploading'){if(item)result.push(item);continue;}
  if(!item)item={remoteId:photo.id,file:{name:photo.id,type:photo.mime,size:photo.bytes}};
  if(item.reprocess&&(photo.state==='trash'||photo.conflict)&&photo.revision>=item.revision)delete item.reprocess;
- if(!item.dirty&&!item.reprocess&&(!item.revision||photo.revision>=item.revision))Object.assign(item,{updated:photo.updated,userRevision:photo.userRevision,jobId:photo.jobId,promptHash:photo.promptHash,model:photo.inferenceModel,processingAttempts:photo.processingAttempts,sourceHash:photo.sourceHash,dHash:photo.dHash,hashVersion:photo.hashVersion,sha256Verified:photo.sha256Verified,revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,conflict:!!photo.conflict,expiresAt:photo.expiresAt,error:photo.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':photo.processingError||''});
+ if(!item.dirty&&!item.reprocess&&(!item.revision||photo.revision>=item.revision))Object.assign(item,{order:photo.order,updated:photo.updated,userRevision:photo.userRevision,jobId:photo.jobId,promptHash:photo.promptHash,model:photo.inferenceModel,processingAttempts:photo.processingAttempts,sourceHash:photo.sourceHash,dHash:photo.dHash,hashVersion:photo.hashVersion,sha256Verified:photo.sha256Verified,revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,conflict:!!photo.conflict,expiresAt:photo.expiresAt,error:photo.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':photo.processingError||''});
  item.preparedUrl=photo.preparedUrl;const nextThumbnail=item.exportImage||photo.preparedUrl;if(!item.thumbnail||item.thumbnail.split('?')[0]!==nextThumbnail?.split('?')[0])item.thumbnail=nextThumbnail;item.originalUrl=photo.originalUrl;result.push(item);
  }
  for(const item of existing){if(!item.remoteId){result.push(item);continue;}if(!seen.has(item.remoteId)){if(!item.shredded&&knownAtStart&&!knownAtStart.has(item.remoteId))result.push(item);else item.shredded=true;}}

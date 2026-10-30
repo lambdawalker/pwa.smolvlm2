@@ -57,7 +57,7 @@ export function pngContentBounds({data,width,height}){
  let left=0,right=width-1;while(left<width&&!columnHasInk(left))left++;while(right>left&&!columnHasInk(right))right--;
  return {x:left,y:top,width:right-left+1,height:bottom-top+1};
 }
-async function renderPage(plan,page,{createCanvas,loadImage:decode}){
+export async function renderPage(plan,page,{createCanvas,loadImage:decode}){
  const g=pngPageGeometry(plan,page),canvas=createCanvas();let cropped;
  try{
   canvas.width=g.width;canvas.height=g.height;const context=canvas.getContext('2d');if(!context)throw Error('PNG export requires Canvas support.');

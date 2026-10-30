@@ -19,21 +19,23 @@ const maxOriginalBytes = 25 << 20
 var resourceID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type Session struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Created  string `json:"created"`
-	Revision int    `json:"revision"`
-	Deleting bool   `json:"deleting,omitempty"`
+	Categories []string `json:"categories,omitempty"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Created    string   `json:"created"`
+	Revision   int      `json:"revision"`
+	Deleting   bool     `json:"deleting,omitempty"`
 }
 type Photo struct {
-	UserRevision       int    `json:"userRevision,omitempty"`
-	PromptHash         string `json:"promptHash,omitempty"`
-	InferenceModel     string `json:"inferenceModel,omitempty"`
-	JobID              string `json:"jobId,omitempty"`
-	InferencePrompt    string `json:"inferencePrompt,omitempty"`
-	CloudConsent       bool   `json:"cloudConsent,omitempty"`
-	ProcessingError    string `json:"processingError,omitempty"`
-	ProcessingAttempts int    `json:"processingAttempts,omitempty"`
+	Order              float64 `json:"order,omitempty"`
+	UserRevision       int     `json:"userRevision,omitempty"`
+	PromptHash         string  `json:"promptHash,omitempty"`
+	InferenceModel     string  `json:"inferenceModel,omitempty"`
+	JobID              string  `json:"jobId,omitempty"`
+	InferencePrompt    string  `json:"inferencePrompt,omitempty"`
+	CloudConsent       bool    `json:"cloudConsent,omitempty"`
+	ProcessingError    string  `json:"processingError,omitempty"`
+	ProcessingAttempts int     `json:"processingAttempts,omitempty"`
 
 	SourceHash     string `json:"sourceHash,omitempty"`
 	DHash          string `json:"dHash,omitempty"`
@@ -329,7 +331,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			if utf8.RuneCountInString(in.Description) > 180 || len(in.RawOutput) > 8192 {
 				return cloudError(400, "Photo text is too long.")
 			}
-			if in.State == "done" && in.Category != "Indoors" && in.Category != "Outdoors" && in.Category != "Documents" && in.Category != "Computer screens" {
+			if in.State == "done" && (strings.TrimSpace(in.Category) == "" || utf8.RuneCountInString(in.Category) > 60) {
 				return cloudError(400, "Choose a category.")
 			}
 			if p.State == "uploading" {
@@ -357,6 +359,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 				p.State = "review"
 				p.Conflict = true
 			}
+			p.Order = in.Order
 			p.Category = in.Category
 			p.Description = in.Description
 			p.RawOutput = in.RawOutput
