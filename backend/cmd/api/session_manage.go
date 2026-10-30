@@ -19,6 +19,7 @@ func sessionRevision(s Session) int {
 
 func renameSession(ctx context.Context, store recordStore, user string, session Session, body []byte) events.APIGatewayV2HTTPResponse {
 	var in struct {
+		Prompt     *string   `json:"prompt"`
 		Categories *[]string `json:"categories"`
 		Name       string    `json:"name"`
 		Revision   int       `json:"revision"`
@@ -44,6 +45,12 @@ func renameSession(ctx context.Context, store recordStore, user string, session 
 			}
 		}
 		session.Categories = *in.Categories
+	}
+	if in.Prompt != nil {
+		if !validJobPrompt(*in.Prompt) {
+			return cloudError(400, "Invalid prompt.")
+		}
+		session.Prompt = *in.Prompt
 	}
 	session.Name = in.Name
 	session.Revision = expected + 1

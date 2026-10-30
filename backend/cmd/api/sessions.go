@@ -19,6 +19,7 @@ const maxOriginalBytes = 25 << 20
 var resourceID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type Session struct {
+	Prompt     string   `json:"prompt,omitempty"`
 	Categories []string `json:"categories,omitempty"`
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
@@ -27,6 +28,8 @@ type Session struct {
 	Deleting   bool     `json:"deleting,omitempty"`
 }
 type Photo struct {
+	CascadeID          string  `json:"cascadeId,omitempty"`
+	Uploaded           string  `json:"uploaded"`
 	Order              float64 `json:"order,omitempty"`
 	UserRevision       int     `json:"userRevision,omitempty"`
 	PromptHash         string  `json:"promptHash,omitempty"`
@@ -192,6 +195,9 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			if e != nil {
 				return storeError(e)
 			}
+			if p.Uploaded == "" {
+				p.Uploaded = "1970-01-01T00:00:00Z"
+			}
 			photos = append(photos, p)
 		}
 		response := apiJSON(200, map[string]any{"session": session, "photos": photos})
@@ -231,6 +237,7 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		p.InferenceModel = ""
 		p.SHA256Verified = false
 		p.ID = newID()
+		p.Uploaded = time.Now().UTC().Format(time.RFC3339Nano)
 		claimSaved := false
 		if p.SourceHash != "" || p.DHash != "" || p.HashVersion != "" {
 			if !validPhotoHashes(p) {

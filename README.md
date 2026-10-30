@@ -129,8 +129,10 @@ Print density is embedded as 300 DPI. Portrait exports fit within 6.25 × 8.75 i
 
 ### Photo tools
 
-Use Select for bulk category changes, Trash moves, reclassification, and exporting a selection. Click a description to edit it (180 characters). Drag cards to reorder on desktop; the up/down buttons work on touch devices. Ordering is saved with each photo and used for exports. Search filters descriptions/categories; the Sessions page also searches session names.
+Use Select for bulk category changes, Trash moves, reclassification, and exporting a selection. Click a description to edit it (180 characters). Cards use their normal session order; manual reordering is no longer offered. Search filters descriptions/categories; the Sessions page also searches session names.
 
-Categories adds custom session categories alongside the standard categories. New classification jobs include those categories; existing jobs/photos retain their current results. Preview renders the same image grid and category pagination; Word/PowerPoint margins can differ from the grid preview.
+The floating settings panel has separate Document settings and Categorization settings sections. Edit category rows with Add (+) and hold-to-delete icons. Apply confirms that all non-Trash photos will be reprocessed with the new prompt and categories. Cancel discards the draft. Cascade requests are batched and idempotent; retry the confirmation if queueing is interrupted. Preview renders the same image grid and category pagination; Word/PowerPoint margins can differ from the grid preview.
 
 Pending original files are saved in IndexedDB, scoped to the signed-in account and session. Reopen the session and use Resume uploads after interruption. Completed uploads and duplicates remove their pending record. Browser storage eviction, private browsing restrictions, or a full disk can prevent recovery; an on-screen notice explains when the page must remain open. Audit does not promise uploads will continue after the browser closes.
+
+Upload-date sorting uses an immutable server timestamp for new photos. Legacy photos return 1970-01-01T00:00:00Z as a fallback; category/description edits never change upload dates.

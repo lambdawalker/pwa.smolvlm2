@@ -311,11 +311,16 @@ func reclassifyPhoto(ctx context.Context, store recordStore, user string, sessio
 
 func queuePendingPhotos(ctx context.Context, store recordStore, user string, session Session, body []byte) events.APIGatewayV2HTTPResponse {
 	var request struct {
-		Prompt  string `json:"prompt"`
-		Consent bool   `json:"consent"`
+		CascadeID string `json:"cascadeId"`
+		All       bool   `json:"all"`
+		Prompt    string `json:"prompt"`
+		Consent   bool   `json:"consent"`
 	}
 	if json.Unmarshal(body, &request) != nil || !request.Consent || !validJobPrompt(request.Prompt) {
 		return cloudError(400, "Confirm AWS consent and enter a prompt of 1–1000 characters.")
+	}
+	if request.All && (request.CascadeID == "" || len(request.CascadeID) > 64) {
+		return cloudError(400, "Invalid reprocessing request.")
 	}
 	records, err := store.List(ctx, sessionOwner(user, session.ID), "PHOTO#")
 	if err != nil {
@@ -325,12 +330,22 @@ func queuePendingPhotos(ctx context.Context, store recordStore, user string, ses
 	remaining := false
 	for _, data := range records {
 		var p Photo
-		if json.Unmarshal(data, &p) != nil || p.State != "pending" || p.JobID != "" || p.Conflict {
+		if json.Unmarshal(data, &p) != nil {
+			continue
+		}
+		if request.All {
+			if p.State == "trash" || p.State == "shredded" || p.State == "uploading" || p.CascadeID == request.CascadeID {
+				continue
+			}
+		} else if p.State != "pending" || p.JobID != "" || p.Conflict {
 			continue
 		}
 		if len(queued) >= 20 {
 			remaining = true
 			break
+		}
+		if request.All {
+			p.CascadeID = request.CascadeID
 		}
 		if _, err := enqueuePhoto(ctx, store, user, session, &p, p.Revision, request.Prompt, true); err != nil {
 			if errors.Is(err, errConflict) {
