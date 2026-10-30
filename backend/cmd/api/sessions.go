@@ -26,19 +26,23 @@ type Session struct {
 	Deleting bool   `json:"deleting,omitempty"`
 }
 type Photo struct {
-	ExpiresAt   int64  `json:"expiresAt,omitempty"`
-	Conflict    bool   `json:"conflict,omitempty"`
-	ID          string `json:"id"`
-	Mime        string `json:"mime"`
-	Bytes       int64  `json:"bytes"`
-	State       string `json:"state"`
-	Category    string `json:"category"`
-	Description string `json:"description"`
-	RawOutput   string `json:"rawOutput"`
-	Revision    int    `json:"revision"`
-	Updated     string `json:"updated"`
-	OriginalURL string `json:"originalUrl,omitempty"`
-	PreparedURL string `json:"preparedUrl,omitempty"`
+	SourceHash     string `json:"sourceHash,omitempty"`
+	DHash          string `json:"dHash,omitempty"`
+	HashVersion    string `json:"hashVersion,omitempty"`
+	SHA256Verified bool   `json:"sha256Verified,omitempty"`
+	ExpiresAt      int64  `json:"expiresAt,omitempty"`
+	Conflict       bool   `json:"conflict,omitempty"`
+	ID             string `json:"id"`
+	Mime           string `json:"mime"`
+	Bytes          int64  `json:"bytes"`
+	State          string `json:"state"`
+	Category       string `json:"category"`
+	Description    string `json:"description"`
+	RawOutput      string `json:"rawOutput"`
+	Revision       int    `json:"revision"`
+	Updated        string `json:"updated"`
+	OriginalURL    string `json:"originalUrl,omitempty"`
+	PreparedURL    string `json:"preparedUrl,omitempty"`
 }
 
 func newID() string {
@@ -183,6 +187,9 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		response.Headers["etag"] = etag
 		return response
 	}
+	if len(path) == 4 && path[3] == "deduplicate" && method == "POST" {
+		return trashDuplicatePhotos(ctx, store, user, session)
+	}
 	if len(path) == 4 && path[3] == "photos" && method == "POST" {
 		var p Photo
 		if json.Unmarshal(body, &p) != nil {
@@ -196,7 +203,30 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		if p.Bytes <= 0 || p.Bytes > maxOriginalBytes {
 			return cloudError(413, "Photos must be 25 MB or smaller.")
 		}
+		p.SHA256Verified = false
 		p.ID = newID()
+		claimSaved := false
+		if p.SourceHash != "" || p.DHash != "" || p.HashVersion != "" {
+			if !validPhotoHashes(p) {
+				return cloudError(400, "Invalid image hashes.")
+			}
+			duplicate, err := reservePhotoHash(ctx, store, user, session, &p)
+			if err != nil {
+				if errors.Is(err, errConflict) {
+					return apiJSON(409, map[string]string{"error": "An identical photo is already uploading. Retry shortly.", "code": "UPLOAD_IN_PROGRESS"})
+				}
+				return storeError(err)
+			}
+			if duplicate != nil {
+				return duplicatePhotoResponse(*duplicate)
+			}
+			defer func() {
+				if !claimSaved {
+					_ = releasePhotoHash(ctx, store, user, sid, p)
+				}
+			}()
+		}
+
 		p.State = "uploading"
 		p.Category = ""
 		p.Description = ""
@@ -216,7 +246,11 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		if e := saveSessionPhoto(ctx, store, user, session, p, 0); e != nil {
 			return storeError(e)
 		}
+		claimSaved = true
 		return apiJSON(201, map[string]any{"photo": p, "originalUploadUrl": original, "preparedUploadUrl": prepared})
+	}
+	if len(path) == 6 && path[3] == "photos" && path[5] == "hashes" && resourceID.MatchString(path[4]) && method == "POST" {
+		return backfillPhotoHashes(ctx, store, user, session, path[4], body)
 	}
 	if len(path) == 5 && path[3] == "photos" && resourceID.MatchString(path[4]) {
 		pid := path[4]
@@ -279,6 +313,12 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 				prepared, e := store.Size(ctx, photoKey(user, sid, pid, "prepared.jpg"))
 				if e != nil || prepared <= 0 || prepared > 512<<10 {
 					return cloudError(409, "Prepared upload is incomplete.")
+				}
+				if validPhotoHashes(p) {
+					if err := verifyOriginalHash(ctx, store, user, sid, p); err != nil {
+						return cloudError(400, "Original image hash did not match the uploaded bytes. Retry uploading.")
+					}
+					p.SHA256Verified = true
 				}
 			}
 			p.State = in.State

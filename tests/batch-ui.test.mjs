@@ -1,3 +1,4 @@
+import {sameImageHashes,validImageHashes} from '../src/image-hash.js';
 import { defaults } from '../src/defaults.generated.js';
 import { getLanguage, languagePrompt, t } from '../src/i18n.js';
 import test from 'node:test';
@@ -16,7 +17,7 @@ async function app(supported=true,installed=[],cloud=true,cloudClassify=async()=
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const originalFiles=[],revoked=[];class PhotoURL extends URL{static createObjectURL(file){originalFiles.push(file);return 'blob:original';}static revokeObjectURL(url){revoked.push(url);}}
  const events={};const workers=[];class Worker{constructor(){throw Error('Local model workers are no longer supported');}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
- vm.runInNewContext('"use strict";\n'+source,{...(shared||{}),setInterval:()=>0,parseResult,defaults,getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:async()=>({url:'data:photo',width:10,height:10}),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{location:shared?.pageLocation,matchMedia:()=>({matches:mobile}),addEventListener(name,handler){events[name]=handler;}},registerSW:()=>()=>{}});
+ vm.runInNewContext('"use strict";\n'+source,{...(shared||{}),setInterval:()=>0,parseResult,defaults,sameImageHashes,validImageHashes,getLanguage,languagePrompt,t,appendPhotoDetails:(container,item,label,cloud)=>renderPhotoDetails(container,item,label,cloud,{createElement:element}),CLOUD_MODEL,CLOUD_INFO,CLOUD_PRECISION,cloudAvailable:async()=>cloud,classifyCloud:cloudClassify,AbortController,setTimeout,clearTimeout,sha256:async()=> '123456789abc'+'0'.repeat(52),HASH_LABEL_LENGTH:12,precisionLabel:()=> 'precision',imageInfoLabel:()=> 'image info',logEvent(){},installDiagnostics(){},watchOperation:()=>({touch(){},stop(){}}),availableModels:async()=>installed,resolvePrompt,createDownloadView:()=>({reset(){},update(){}}),document:{getElementById:id=>{assert.ok(elements[id],id);return elements[id];},createElement:element},Worker,URL:PhotoURL,CATEGORIES,CATEGORY_PROMPT,runBatch,DEFAULT_MODEL:'256m',friendlyError:x=>x,preparePhoto:shared?.preparePhoto|| (async()=>({url:'data:photo',width:10,height:10})),Image:class{async decode(){}},navigator:{gpu:{requestAdapter:async()=>supported?{}:null}},window:{location:shared?.pageLocation,matchMedia:()=>({matches:mobile}),addEventListener(name,handler){events[name]=handler;}},registerSW:()=>()=>{}});
  await tick();elements['image-concurrency'].value='1';if(!auto)elements['auto-categorize'].checked=false;return {e:elements,w:workers,originalFiles,revoked,events};
 }
 test('cloud quota failure pauses batch and keeps remaining photos pending',async()=>{
@@ -152,4 +153,32 @@ test('status checks flag remote changes without merging; cloud click applies the
 test('a delayed status check cannot turn the cloud red after a newer manual sync',async()=>{
  let block=false,finish;const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async(path='',method,body,options)=>{if(!path)return {sessions:[{id:'s',name:'Visit'}]};if(block&&options?.conditional){block=false;return new Promise(resolve=>{finish=()=>resolve({photos:[{id:'old',revision:1,state:'done'}]});});}return {photos:[]};},mergePhotos:async()=>[]};
  const {e,events}=await app(false,[],true,undefined,false,false,shared);block=true;const check=events.focus();await tick();await e['sync-cloud'].onclick();finish();await check;assert.equal(e['sync-cloud'].attrs['data-updates'],'false');assert.equal(e.groups.children.length,0);
+});
+
+
+test('duplicate upload results remove the redundant card without categorizing it',async()=>{
+ let calls=0;const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>!path?{sessions:[{id:'s',name:'Visit'}]}:{photos:[]},mergePhotos:async()=>[],uploadPhoto:async()=>({duplicate:true,id:'existing',state:'done'})};
+ const {e}=await app(false,[],true,async()=>{calls++;},false,false,shared);await e.photos.onchange({target:{files:[{name:'copy.jpg',size:10,type:'image/jpeg'}]}});
+ assert.equal(e.groups.children.length,0);assert.equal(calls,0);assert.match(e['duplicate-notice'].textContent,/1/);
+});
+
+test('index existing photos only fills missing hashes and keeps categorization untouched',async()=>{
+ const info={sourceHash:'a'.repeat(64),dHash:'0000000000000000',hashVersion:'dhash-8-v1'};let indexed=0,downloads=0;
+ const photos=[{id:'old',state:'done',category:'Outdoors',originalUrl:'https://storage/original'},{id:'ready',state:'done',sha256Verified:true,...info}];
+ const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async(path='',method='GET')=>{if(!path)return {sessions:[{id:'s',name:'Visit'}]};if(path.endsWith('/hashes')){indexed++;const updated=!photos[0].sha256Verified;Object.assign(photos[0],info,{sha256Verified:true});return {photo:photos[0],updated};}return {photos};},mergePhotos:async()=>[],preparePhoto:async()=>{downloads++;return {url:'data:photo',info}},fetch:async()=>new Response(new Blob(['original'],{type:'image/jpeg'}))};
+ const {e}=await app(false,[],true,undefined,false,false,shared);assert.equal(e['index-hashes'].disabled,false);await e['index-hashes'].onclick();
+ assert.equal(indexed,2);assert.equal(downloads,1);assert.equal(photos[0].category,'Outdoors');assert.equal(e['sync-cloud'].attrs['data-updates'],'true');await e['index-hashes'].onclick();assert.equal(indexed,4);assert.equal(downloads,1);
+});
+
+test('identical bytes and dHash skip a second local selection before cloud inference',async()=>{
+ let calls=0;const info={sourceHash:'a'.repeat(64),dHash:'0000000000000000',hashVersion:'dhash-8-v1'};
+ const {e}=await app(false,[],true,async()=>{calls++;return '{"category":"Indoors","description":"A room."}'},false,false,{preparePhoto:async()=>({url:'data:photo',info})});
+ await e.photos.onchange({target:{files:[{name:'first.jpg'},{name:'renamed-copy.jpg'}]}});await e.start.onclick();
+ assert.equal(calls,1);assert.match(e.summary.textContent,/1 of 1 processed/);assert.match(e['duplicate-notice'].textContent,/1/);
+});
+
+
+test('existing duplicate cleanup is explicit, batched and waits for cloud click to update cards',async()=>{
+ let calls=0;const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async(path='',method='GET')=>{if(!path)return {sessions:[{id:'s',name:'Visit'}]};if(path.endsWith('/deduplicate'))return {moved:++calls===1?20:1,remaining:calls===1,unindexed:0};return {photos:[]};},mergePhotos:async()=>[]};
+ const {e}=await app(false,[],true,undefined,false,false,shared);assert.equal(calls,0);await e['deduplicate-photos'].onclick();assert.equal(calls,2);assert.match(e['hash-index-status'].textContent,/21/);assert.equal(e['sync-cloud'].attrs['data-updates'],'true');
 });

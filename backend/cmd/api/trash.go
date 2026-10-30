@@ -28,6 +28,9 @@ func shredPhoto(ctx context.Context, store recordStore, user, sid string, p Phot
 			return err
 		}
 	}
+	if err := releasePhotoHash(ctx, store, user, sid, p); err != nil {
+		return err
+	}
 	return store.Delete(ctx, sessionOwner(user, sid), "PHOTO#"+p.ID)
 }
 func trashPhoto(ctx context.Context, store recordStore, user string, session Session, p Photo, in Photo) events.APIGatewayV2HTTPResponse {

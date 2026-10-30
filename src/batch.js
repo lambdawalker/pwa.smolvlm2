@@ -11,6 +11,7 @@ import { sha256, HASH_LABEL_LENGTH, imageInfoLabel } from './input-info.js';
 import { logEvent,installDiagnostics } from './diagnostics.js';
 installDiagnostics();
 import { registerSW } from 'virtual:pwa-register';
+import {sameImageHashes,validImageHashes} from './image-hash.js';
 import { preparePhoto } from './image.js';
 import { friendlyError, resolvePrompt } from './core.js';
 import { CATEGORIES, CATEGORY_PROMPT, runBatch, parseResult } from './batch-core.js';
@@ -23,7 +24,7 @@ $('original-viewer').onclick=event=>{if(event.target===$('original-viewer'))$('o
 async function openOriginal(item){closeOriginal();try{const file=item.originalUrl?await (async()=>{const r=await fetch(item.originalUrl,{cache:'no-store'});if(!r.ok)throw Error('Could not load original photo.');return r.blob();})():item.file;originalURL=URL.createObjectURL(file);$('original-image').src=originalURL;$('original-image').alt=item.description||'Original photo';$('original-viewer').showModal();}catch(e){status(e.message,true);}}
 window.addEventListener('pagehide',closeOriginal);
 let exporting=false,exportURL=null;
-let pickerOpen=false,writeOperations=0,syncError='',retrying=false;
+let pickerOpen=false,writeOperations=0,syncError='',retrying=false,duplicateCount=0,hashIndexing=false,hashIndexController=null,cleaningDuplicates=false;
 let shared=false,sessionId=null,syncBusy=false,syncing=false,checkingSync=false,pendingUpdates=false,syncGeneration=0,sessionChoicesSignature='',syncSessionChoices=()=>{},accountReady=typeof authConfig!=='function';
 let items=[],running=false,cancelled=false,installPrompt;
 const readSetting=(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}};
@@ -88,6 +89,8 @@ function render(){
  items=items.filter(item=>!item.shredded&&!(item.state==='trash'&&!item.remoteId&&item.expiresAt<=Date.now()/1000));
  const activeItems=items.filter(item=>item.state!=='trash');
  const busy=running||exporting;
+ $('duplicate-notice').hidden=!duplicateCount;$('duplicate-notice').textContent=t('Duplicates skipped:')+' '+duplicateCount;
+ $('index-hashes').disabled=!shared||!sessionId||(!hashIndexing&&(busy||retrying||cleaningDuplicates));$('deduplicate-photos').disabled=!shared||!sessionId||busy||retrying||hashIndexing||cleaningDuplicates;$('index-hashes').textContent=t(hashIndexing?'Stop indexing':'Index existing photos');
  $('counter-processed').textContent=String(activeItems.filter(i=>['done','review','error'].includes(i.state)).length)+'/'+String(activeItems.length);$('counter-categorized').textContent=String(activeItems.filter(i=>i.state==='done').length);$('counter-uploaded').textContent=String(activeItems.filter(i=>i.remoteId).length)+'/'+String(activeItems.length);
  syncIcon();
  if($('session-select'))$('session-select').disabled=busy;
@@ -150,7 +153,7 @@ $('photos').addEventListener('cancel',()=>{pickerOpen=false;});
 $('photos').onchange=async event=>{
  pickerOpen=false;
  if(!accountReady||(shared&&!sessionId)||exporting||running)return;
- const files=[...event.target.files];event.target.value='';
+ const files=[...event.target.files];event.target.value='';duplicateCount=0;
  if(shared){
  const uploadSessionId=sessionId;
  const added=files.map(file=>({file,state:'uploading',uploadState:'Waiting to upload',thumbnail:URL.createObjectURL(file)}));items.push(...added);render();
@@ -159,14 +162,17 @@ $('photos').onchange=async event=>{
 
  cancelled=false;render();if(!running&&$('auto-categorize').checked&&canRun())$('start').click();
 };
+function duplicateInSession(item){return items.some(other=>other!==item&&!other.shredded&&!other.uploadFailed&&other.state!=='uploading'&&sameImageHashes(item.info,validImageHashes(other.info)?other.info:other));}
+function skipDuplicate(item){item.shredded=true;if(item.thumbnail?.startsWith('blob:'))URL.revokeObjectURL(item.thumbnail);if(items.includes(item))duplicateCount++;logEvent('duplicate-photo-skipped',{sourceHash:item.info?.sourceHash,dHash:item.info?.dHash});}
 async function uploadItems(photos,targetSession){
  await mutateSession(async()=>{for(const item of photos){
   if(item.shredded||item.state==='trash')continue;
-  item.state='uploading';item.uploadFailed=false;item.uploadState='Uploading';item.error='';render();
+  item.state='uploading';item.uploadFailed=false;item.uploadState='Checking duplicates';item.error='';render();
   try{logEvent('photo-upload-start',{bytes:item.file.size,mime:item.file.type,retry:!!item.info});
    const photo=await preparePhoto(item.file,{centerCrop:true});item.exportImage=photo.url;item.info=photo.info;
+   if(sessionId===targetSession&&duplicateInSession(item)){skipDuplicate(item);render();continue;}item.uploadState='Uploading';
    if(item.thumbnail?.startsWith('blob:'))URL.revokeObjectURL(item.thumbnail);item.thumbnail=photo.url;render();
-   const saved=await uploadPhoto(targetSession,item.file,photo);item.remoteId=saved.id;item.revision=saved.revision;item.state='pending';item.uploadState='Uploaded';logEvent('photo-upload-complete',{id:saved.id});
+   const saved=await uploadPhoto(targetSession,item.file,photo);if(saved.duplicate){skipDuplicate(item);render();continue;}item.remoteId=saved.id;item.revision=saved.revision;item.state='pending';item.uploadState='Uploaded';logEvent('photo-upload-complete',{id:saved.id});
   }catch(error){item.state='error';item.uploadFailed=true;item.uploadState='Upload failed';item.error=error.message;logEvent('photo-upload-error',{message:error.message,status:error.status||0});}
   render();
  }});
@@ -189,7 +195,7 @@ $('start').onclick=async()=>{
    logEvent('photo-prepare-start',{index:items.indexOf(item),bytes:item.file.size,mime:item.file.type});
    if(item.remoteId&&!item.exportImage&&item.preparedUrl)item.exportImage=await imageData(item.preparedUrl);
    const photo=item.remoteId&&item.exportImage?{url:item.exportImage,width:384,height:384,info:item.info}:await preparePhoto(item.file,{centerCrop:true});
-   item.info=photo.info;logEvent('photo-prepare-complete',{index:items.indexOf(item),...photo.info,width:photo.width,height:photo.height});if(cancelled)throw Error('Stopped');
+   item.info=photo.info;if(!item.remoteId&&duplicateInSession(item)){skipDuplicate(item);const error=new Error('Duplicate photo skipped.');error.duplicate=true;throw error;}logEvent('photo-prepare-complete',{index:items.indexOf(item),...photo.info,width:photo.width,height:photo.height});if(cancelled)throw Error('Stopped');
    item.exportImage=photo.url;if(item.thumbnail?.startsWith('blob:'))URL.revokeObjectURL(item.thumbnail);item.thumbnail=await thumbnail(photo);if(cancelled)throw Error('Stopped');render();
       const controller=new AbortController();cloudControllers.add(controller);
    const timeout=setTimeout(()=>controller.abort(),30000);
@@ -255,9 +261,53 @@ $('export-document').onclick=async()=>{
  finally{exporting=false;render();}
 };
 
+$('index-hashes').onclick=async()=>{
+ if(hashIndexing){hashIndexController?.abort();return;}
+ if(!shared||!sessionId||running||exporting||retrying||cleaningDuplicates)return;
+ const targetSession=sessionId,controller=new AbortController();hashIndexController=controller;hashIndexing=true;render();
+ let completed=0,total=0,duplicates=0;
+ const progress=()=>{$('hash-index-status').textContent=t('Photos indexed:')+' '+completed+'/'+total+(duplicates?' · '+t('Existing duplicates:')+' '+duplicates:'');};
+ try{
+  const data=await sessionAPI('/'+targetSession,'GET',undefined,{signal:controller.signal});
+  const queue=data.photos.filter(photo=>!['uploading','shredded'].includes(photo.state));total=queue.length;progress();
+  for(const photo of queue){
+   if(controller.signal.aborted||sessionId!==targetSession)throw new DOMException('Stopped','AbortError');
+   const timeout=setTimeout(()=>controller.abort(),60000);
+   try{
+    let info=photo;
+    if(!photo.sha256Verified||!validImageHashes(photo)){
+     const response=await fetch(photo.originalUrl,{cache:'no-store',signal:controller.signal});if(!response.ok)throw Error('Could not load original photo. Retry indexing.');
+     const file=await response.blob();if(file.size>25*1024*1024)throw Error('Original photo is too large to index.');
+     info=(await preparePhoto(file,{centerCrop:true})).info;
+    }
+    const result=await sessionAPI('/'+targetSession+'/photos/'+photo.id+'/hashes','POST',{sourceHash:info.sourceHash,dHash:info.dHash,hashVersion:info.hashVersion},{signal:controller.signal});
+    completed++;if(result.duplicateOf)duplicates++;if(result.updated&&sessionId===targetSession){pendingUpdates=true;syncIcon();}progress();
+    logEvent('photo-hashes-indexed',{id:photo.id,duplicate:!!result.duplicateOf});
+   }finally{clearTimeout(timeout);}
+  }
+  $('hash-index-status').textContent+=' · '+t('Indexing complete.');
+ }catch(error){$('hash-index-status').textContent=t(error.name==='AbortError'?'Indexing stopped. Run again to continue.':'Indexing failed. Run again to retry.')+' '+completed+'/'+total;logEvent('photo-hash-index-error',{message:error.message});}
+ finally{hashIndexing=false;hashIndexController=null;render();}
+};
+$('deduplicate-photos').onclick=async()=>{
+ if(!shared||!sessionId||running||exporting||retrying||hashIndexing||cleaningDuplicates)return;
+ const targetSession=sessionId;let moved=0;cleaningDuplicates=true;render();
+ try{
+  for(;;){
+   const result=await sessionAPI('/'+targetSession+'/deduplicate','POST');moved+=result.moved||0;
+   $('hash-index-status').textContent=t('Duplicate copies moved to Trash:')+' '+moved;
+   if(result.moved&&sessionId===targetSession){pendingUpdates=true;syncIcon();}
+   if(!result.remaining){if(result.unindexed)$('hash-index-status').textContent+=' · '+t('Index remaining photos to check all duplicates.');break;}
+   if(!result.moved)throw Error('Duplicate cleanup did not make progress. Retry.');
+  }
+  if(moved)$('hash-index-status').textContent+=' · '+t('Press the cloud icon to apply changes.');
+ }catch(error){$('hash-index-status').textContent=t('Duplicate cleanup stopped. Retry to continue.')+' '+moved;logEvent('duplicate-cleanup-error',{message:error.message});}
+ finally{cleaningDuplicates=false;render();}
+};
+window.addEventListener('pagehide',()=>hashIndexController?.abort());
 function syncIcon(){
  const icon=$('sync-cloud');icon.hidden=!shared;icon.setAttribute('data-updates',String(pendingUpdates));
- icon.disabled=syncing||running||exporting||retrying||writeOperations>0;
+ icon.disabled=syncing||running||exporting||retrying||cleaningDuplicates||writeOperations>0;
  icon.title=t(syncError?'Could not check sync. Press to retry.':pendingUpdates?'Updates available. Press to sync.':'Synchronized. Press to sync.');
  icon.setAttribute('aria-label',icon.title);
 }
@@ -280,7 +330,7 @@ async function checkSession(){
  finally{checkingSync=false;}
 }
 async function refreshSession(){
- if(!shared||pickerOpen||syncing||running||exporting||retrying||writeOperations>0)return;
+ if(!shared||pickerOpen||syncing||running||exporting||retrying||cleaningDuplicates||writeOperations>0)return;
  const polledSession=sessionId,before=syncFingerprint(),knownAtStart=new Map(items.filter(item=>item.remoteId).map(item=>[item.remoteId,item.revision]));syncing=true;syncGeneration++;syncIcon();
  try{const listing=await sessionAPI();if(sessionId!==polledSession)return;syncSessionChoices(listing.sessions);
  if(!sessionId){items=[];pendingUpdates=false;syncError='';$('session-status').textContent='No sessions yet. Create one to add photos.';if(before!==syncFingerprint())render();return;}
@@ -291,7 +341,7 @@ async function refreshSession(){
  }catch(e){syncError=e.message;$('session-status').textContent=e.message;}finally{syncing=false;syncIcon();}
 }
 $('sync-cloud').onclick=()=>refreshSession();
-async function loadSession(id){if(running||exporting)return;sessionId=id;saveSetting('audit-session',id);items=[];pendingUpdates=false;syncError='';syncGeneration++;await refreshSession();}
+async function loadSession(id){if(running||exporting)return;sessionId=id;saveSetting('audit-session',id);items=[];duplicateCount=0;pendingUpdates=false;syncError='';syncGeneration++;await refreshSession();}
 async function initSharedSessions(){
  if(typeof authConfig!=='function')return;
  try{const config=await authConfig();if(!config.enabled){accountReady=true;return;}if(!credentials()){location.replace('./login.html');return;}shared=true;$('sessions-panel').hidden=false;$('sign-out').hidden=false;$('sign-out').onclick=()=>{stopProcessing();shared=false;accountReady=false;items=[];closeOriginal();if(exportURL){URL.revokeObjectURL(exportURL);exportURL=null;}render();signOut();};

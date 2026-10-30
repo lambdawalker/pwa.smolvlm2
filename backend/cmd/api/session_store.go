@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -9,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	dt "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"io"
 	"os"
 	"strconv"
 	"time"
@@ -17,6 +20,7 @@ import (
 var errConflict = errors.New("session conflict")
 
 type recordStore interface {
+	ObjectSHA256(context.Context, string) (string, int64, error)
 	MarkShredded(context.Context, string, string, []byte) error
 	TrashCandidates(context.Context, int64) ([]trashRecord, error)
 	Get(context.Context, string, string) ([]byte, error)
@@ -201,4 +205,22 @@ func (s *awsRecords) TrashCandidates(ctx context.Context, now int64) ([]trashRec
 		}
 		start = v.LastEvaluatedKey
 	}
+}
+
+// Stream and bound original-byte verification; never load a full image into Lambda RAM.
+func (s *awsRecords) ObjectSHA256(ctx context.Context, key string) (string, int64, error) {
+	object, err := s.s.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(os.Getenv("PHOTOS_BUCKET")), Key: aws.String(key)})
+	if err != nil {
+		return "", 0, err
+	}
+	defer object.Body.Close()
+	digest := sha256.New()
+	size, err := io.Copy(digest, io.LimitReader(object.Body, maxOriginalBytes+1))
+	if err != nil {
+		return "", size, err
+	}
+	if size > maxOriginalBytes {
+		return "", size, errors.New("image too large")
+	}
+	return hex.EncodeToString(digest.Sum(nil)), size, nil
 }

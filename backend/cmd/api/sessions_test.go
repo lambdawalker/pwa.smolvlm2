@@ -198,3 +198,7 @@ func (m *memoryRecords) TrashCandidates(ctx context.Context, now int64) ([]trash
 	}
 	return out, nil
 }
+
+func (m *memoryRecords) ObjectSHA256(ctx context.Context, key string) (string, int64, error) {
+	return string(m.data["SHA#"+key]), m.sizes[key], nil
+}

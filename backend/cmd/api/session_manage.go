@@ -74,6 +74,26 @@ func deleteSession(ctx context.Context, store recordStore, user string, session 
 			return storeError(err)
 		}
 	}
+	// Hash reservations live in the same session partition and must leave with it.
+	hashes, err := store.List(ctx, owner, "HASH#")
+	if err != nil {
+		return storeError(err)
+	}
+	for i, data := range hashes {
+		if i >= 20 {
+			return apiJSON(202, map[string]bool{"deleting": true})
+		}
+		var claim photoHashClaim
+		if json.Unmarshal(data, &claim) != nil {
+			return storeError(fmt.Errorf("invalid hash reservation"))
+		}
+		if !strings.HasPrefix(claim.Key, "HASH#") {
+			return storeError(fmt.Errorf("invalid hash reservation key"))
+		}
+		if err := store.Delete(ctx, owner, claim.Key); err != nil {
+			return storeError(err)
+		}
+	}
 	if err := store.Delete(ctx, "USER#"+user, "SESSION#"+session.ID); err != nil {
 		return storeError(err)
 	}

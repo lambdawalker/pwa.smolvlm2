@@ -1,3 +1,4 @@
+import {imageDHash,IMAGE_HASH_VERSION} from './image-hash.js';
 import { sha256 } from './input-info.js';
 import { fitDimensions, validatePhoto } from './core.js';
 export async function preparePhoto(file,{centerCrop=false}={}){
@@ -13,7 +14,7 @@ export async function preparePhoto(file,{centerCrop=false}={}){
   const preparedURL=canvas.toDataURL('image/jpeg',.88);
   const encoded=Uint8Array.from(atob(preparedURL.split(',')[1]),c=>c.charCodeAt(0));
   const info={crop:centerCrop?{x:(img.naturalWidth-side)/2,y:(img.naturalHeight-side)/2,width:side,height:side}:null,sourceWidth:img.naturalWidth,sourceHeight:img.naturalHeight,sourceMime:file.type,sourceBytes:file.size,width,height,preparedBytes:encoded.length,
-   sourceHash:await sha256(await file.arrayBuffer()),preparedHash:await sha256(encoded),pixelHash:await sha256(ctx.getImageData(0,0,width,height).data)};
+   sourceHash:await sha256(await file.arrayBuffer()),dHash:imageDHash(img),hashVersion:IMAGE_HASH_VERSION,preparedHash:await sha256(encoded),pixelHash:await sha256(ctx.getImageData(0,0,width,height).data)};
   return {url:preparedURL,width,height,info};
  }catch(e){
   if(e.message.includes('very large'))throw e;

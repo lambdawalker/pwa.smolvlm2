@@ -65,3 +65,8 @@ test('sync preserves queued recategorization but remote Trash still wins',async(
  await mergePhotos([item],[{id:'p',revision:2,state:'done',category:'Indoors'}]);assert.equal(item.state,'pending');
  await mergePhotos([item],[{id:'p',revision:3,state:'trash'}]);assert.equal(item.state,'trash');assert.equal(item.reprocess,undefined);
 });
+
+test('upload skips object PUTs when both hashes match a stored photo',async()=>{
+ const oldFetch=globalThis.fetch,calls=[];globalThis.fetch=async(url,options)=>{calls.push({url,options});return json({duplicate:true,photo:{id:'existing',revision:3,state:'done'}});};
+ try{const info={sourceHash:'a'.repeat(64),dHash:'0000000000000000',hashVersion:'dhash-8-v1'};const result=await uploadPhoto('s',new Blob(['original'],{type:'image/jpeg'}),{url:'data:unused',info});assert.equal(result.duplicate,true);assert.equal(result.id,'existing');assert.equal(calls.length,1);assert.equal(JSON.parse(calls[0].options.body).dHash,info.dHash);}finally{globalThis.fetch=oldFetch;}
+});
