@@ -386,6 +386,8 @@ func wizard() error {
 	deploy := command(infra, "pulumi", "up", "--yes", "--non-interactive")
 	deploy.Stdout, deploy.Stderr = os.Stdout, os.Stderr
 	if err = deploy.Run(); err != nil {
+		fmt.Println("If AWS reports Signature expired, synchronize Windows time (Settings > Time & language > Date & time > Sync now), then retry. Slow uploads and clock drift can both expire signed requests.")
+		fmt.Println("If Pulumi reports recovered raw state mismatch, use the same backend and stack, run pulumi refresh --stack " + stack + " from infra, review the result, then rerun this wizard. Do not remove the stack or delete its state.")
 		return fmt.Errorf("deployment incomplete: %w; rerun this wizard with the same stack to resume", err)
 	}
 	result := command(infra, "pulumi", "stack", "output", "url")

@@ -48,6 +48,17 @@ func TestCustomDomainInfrastructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := m.resources
+	if _, inline := r["api"]["code"]; inline {
+		t.Fatal("Lambda must not upload inline ZIP code")
+	}
+	if r["api"]["s3Bucket"].StringValue() == "" || r["api"]["s3Key"].StringValue() == "" || r["api"]["sourceCodeHash"].StringValue() == "" {
+		t.Fatal("Lambda artifact reference or hash missing")
+	}
+	for _, key := range []string{"blockPublicAcls", "blockPublicPolicy", "ignorePublicAcls", "restrictPublicBuckets"} {
+		if !r["api-artifacts-private"][resource.PropertyKey(key)].BoolValue() {
+			t.Fatal("artifact bucket must be private")
+		}
+	}
 	if r["trash-cleanup"]["scheduleExpression"].StringValue() != "rate(5 minutes)" {
 		t.Fatal("missing trash retention schedule")
 	}
