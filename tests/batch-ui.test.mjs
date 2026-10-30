@@ -12,7 +12,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 async function app(supported=true,installed=[],cloud=true,cloudClassify=async()=>'{"category":"Indoors","description":"A room."}',auto=false,mobile=false,shared=null){
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const source=readFileSync(new URL('../src/batch.js',import.meta.url),'utf8').replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replaceAll('import.meta.url',"'https://example.test/src/batch.js'");
- const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},addEventListener(name,handler){this.events??={};this.events[name]=handler;},showModal(){this.open=true;},close(){this.open=false;this.events?.close?.();},removeAttribute(){},setAttribute(){},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
+ const element=()=>({children:[],append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},addEventListener(name,handler){this.events??={};this.events[name]=handler;},showModal(){this.open=true;},close(){this.open=false;this.events?.close?.();},removeAttribute(){},setAttribute(name,value){this.attrs??={};this.attrs[name]=value;},click(){this.onclick?.();},getContext(){return {drawImage(){}};},toDataURL(){return 'data:thumb';}});
  const elements=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([,id])=>[id,element()]));
  const originalFiles=[],revoked=[];class PhotoURL extends URL{static createObjectURL(file){originalFiles.push(file);return 'blob:original';}static revokeObjectURL(url){revoked.push(url);}}
  const events={};const workers=[];class Worker{constructor(){throw Error('Local model workers are no longer supported');}postMessage(data){this.sent.push(data);}terminate(){this.stopped=true;}}
@@ -59,9 +59,9 @@ test('signed-in sessions sync uploads and classifications between two devices',a
 test('opening a session link selects it; remote renames and deletions update the picker',async()=>{
  const sessions=[{id:'a',name:'First'},{id:'b',name:'Second'}];
  const shared={pageLocation:{href:'https://audit.example/?session=b'},authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>!path?{sessions:sessions.map(s=>({...s}))}:{photos:[]},mergePhotos:async()=>[]};
- const {e,events}=await app(false,[],true,undefined,false,false,shared);assert.equal(e['session-select'].value,'b');sessions[1].name='Renamed';await events.focus();assert.equal(e['session-select'].children[1].textContent,'Renamed');
- sessions.pop();await events.focus();assert.equal(e['session-select'].value,'a');sessions.pop();await events.focus();assert.equal(e.pick.disabled,true);assert.equal(e['session-select'].children.length,0);
- sessions.push({id:'c',name:'New from laptop'});await events.focus();assert.equal(e['session-select'].value,'c');assert.equal(e.pick.disabled,false);
+ const {e,events}=await app(false,[],true,undefined,false,false,shared);assert.equal(e['session-select'].value,'b');sessions[1].name='Renamed';await events.focus();assert.equal(e['session-select'].children[1].textContent,'Second');assert.equal(e['sync-cloud'].attrs['data-updates'],'true');await e['sync-cloud'].onclick();assert.equal(e['session-select'].children[1].textContent,'Renamed');
+ sessions.pop();await events.focus();await e['sync-cloud'].onclick();assert.equal(e['session-select'].value,'a');sessions.pop();await events.focus();await e['sync-cloud'].onclick();assert.equal(e.pick.disabled,true);assert.equal(e['session-select'].children.length,0);
+ sessions.push({id:'c',name:'New from laptop'});await events.focus();await e['sync-cloud'].onclick();assert.equal(e['session-select'].value,'c');assert.equal(e.pick.disabled,false);
 });
 
 test('an empty account waits for an explicit session instead of recreating a deleted one',async()=>{
@@ -134,4 +134,22 @@ test('retry resumes failed categorization without repeating completed photos',as
  let calls=0;const {e}=await app(false,[],true,async()=>{calls++;if(calls===2)throw Error('Temporary provider failure');return '{"category":"Indoors","description":"A room."}';});
  await e.photos.onchange({target:{files:[{name:'a.jpg'},{name:'b.jpg'},{name:'c.jpg'}]}});await e.start.onclick();
  assert.equal(calls,2);await e.retry.onclick();assert.equal(calls,4);assert.match(e.summary.textContent,/3 of 3 processed \| 3 categorized/);
+});
+
+
+test('status checks flag remote changes without merging; cloud click applies them',async()=>{
+ let photos=[],checks=0,release,delay=false;
+ const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async path=>{if(!path){if(delay)await new Promise(resolve=>{release=resolve});return {sessions:[{id:'s',name:'Visit'}]};}return {photos:photos.map(p=>({...p}))};},mergePhotos:async(existing,remote)=>{checks++;return remote.map(p=>({remoteId:p.id,revision:p.revision,state:p.state,category:p.category,file:{},thumbnail:'data:photo'}));}};
+ const {e,events}=await app(false,[],true,undefined,false,false,shared);assert.equal(e['sync-cloud'].attrs['data-updates'],'false');
+ delay=true;const check=events.focus();await tick();assert.equal(e['sync-cloud'].attrs['data-updates'],'false');delay=false;release();await check;
+ const merged=checks;photos=[{id:'p',revision:1,state:'done',category:'Outdoors'}];await events.focus();
+ assert.equal(checks,merged);assert.equal(e.groups.children.length,0);assert.equal(e['sync-cloud'].attrs['data-updates'],'true');
+ await e['sync-cloud'].onclick();assert.match(e.summary.textContent,/1 of 1 processed/);assert.equal(e['sync-cloud'].attrs['data-updates'],'false');
+ photos=[];await events.focus();assert.match(e.summary.textContent,/1 of 1 processed/);assert.equal(e['sync-cloud'].attrs['data-updates'],'true');
+ await e['sync-cloud'].onclick();assert.equal(e.groups.children.length,0);assert.equal(e['sync-cloud'].attrs['data-updates'],'false');
+});
+
+test('a delayed status check cannot turn the cloud red after a newer manual sync',async()=>{
+ let block=false,finish;const shared={authConfig:async()=>({enabled:true}),credentials:()=>({}),signOut(){},sessionAPI:async(path='',method,body,options)=>{if(!path)return {sessions:[{id:'s',name:'Visit'}]};if(block&&options?.conditional){block=false;return new Promise(resolve=>{finish=()=>resolve({photos:[{id:'old',revision:1,state:'done'}]});});}return {photos:[]};},mergePhotos:async()=>[]};
+ const {e,events}=await app(false,[],true,undefined,false,false,shared);block=true;const check=events.focus();await tick();await e['sync-cloud'].onclick();finish();await check;assert.equal(e['sync-cloud'].attrs['data-updates'],'false');assert.equal(e.groups.children.length,0);
 });

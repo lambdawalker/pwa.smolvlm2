@@ -24,7 +24,7 @@ async function openOriginal(item){closeOriginal();try{const file=item.originalUr
 window.addEventListener('pagehide',closeOriginal);
 let exporting=false,exportURL=null;
 let pickerOpen=false,writeOperations=0,syncError='',retrying=false;
-let shared=false,sessionId=null,syncBusy=false,syncing=false,syncSessionChoices=()=>{},accountReady=typeof authConfig!=='function';
+let shared=false,sessionId=null,syncBusy=false,syncing=false,checkingSync=false,pendingUpdates=false,syncGeneration=0,sessionChoicesSignature='',syncSessionChoices=()=>{},accountReady=typeof authConfig!=='function';
 let items=[],running=false,cancelled=false,installPrompt;
 const readSetting=(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}};
 const saveSetting=(key,value)=>{try{localStorage.setItem(key,value);}catch{}};
@@ -255,30 +255,53 @@ $('export-document').onclick=async()=>{
  finally{exporting=false;render();}
 };
 
-function syncIcon(){const icon=$('sync-cloud');icon.hidden=!shared;icon.setAttribute('data-syncing',String(syncing||syncBusy));icon.setAttribute('data-error',String(!!syncError));icon.title=syncError||$('session-status').textContent||'Cloud sync';icon.setAttribute('aria-label',t('Cloud sync')+(syncError?': '+syncError:''));}
+function syncIcon(){
+ const icon=$('sync-cloud');icon.hidden=!shared;icon.setAttribute('data-updates',String(pendingUpdates));
+ icon.disabled=syncing||running||exporting||retrying||writeOperations>0;
+ icon.title=t(syncError?'Could not check sync. Press to retry.':pendingUpdates?'Updates available. Press to sync.':'Synchronized. Press to sync.');
+ icon.setAttribute('aria-label',icon.title);
+}
+function sessionSignature(sessions){return JSON.stringify(sessions.filter(s=>!s.deleting).map(s=>[s.id,s.name]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))));}
+function remoteSignature(photos){return JSON.stringify(photos.filter(p=>!['uploading','shredded'].includes(p.state)).map(p=>[p.id??p.remoteId,p.revision]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))));}
 function syncFingerprint(){return JSON.stringify([sessionId,items.map(item=>[item.remoteId,item.revision,item.state,item.shredded])]);}
-async function refreshSession(force=false){
- if(!shared||pickerOpen||syncing)return;
- const polledSession=sessionId,before=syncFingerprint(),knownAtStart=new Map(items.filter(item=>item.remoteId).map(item=>[item.remoteId,item.revision]));syncing=true;syncIcon();
+async function checkSession(){
+ if(!shared||pickerOpen||syncing||checkingSync)return;
+ const checkedSession=sessionId,generation=syncGeneration;checkingSync=true;
+ try{
+  const listing=await sessionAPI();if(!shared||sessionId!==checkedSession||generation!==syncGeneration)return;
+  let changed=sessionSignature(listing.sessions)!==sessionChoicesSignature;
+  if(checkedSession&&listing.sessions.some(s=>s.id===checkedSession&&!s.deleting)){
+   const data=await sessionAPI('/'+checkedSession,'GET',undefined,{conditional:true});
+   if(!shared||sessionId!==checkedSession||generation!==syncGeneration)return;
+   if(!data.unchanged)changed ||= remoteSignature(data.photos)!==remoteSignature(items.filter(i=>i.remoteId&&!i.shredded).map(i=>({...i,id:i.remoteId})));
+  }
+  pendingUpdates ||= changed;syncError='';syncIcon();
+ }catch(e){if(sessionId===checkedSession&&generation===syncGeneration){syncError=e.message;syncIcon();}}
+ finally{checkingSync=false;}
+}
+async function refreshSession(){
+ if(!shared||pickerOpen||syncing||running||exporting||retrying||writeOperations>0)return;
+ const polledSession=sessionId,before=syncFingerprint(),knownAtStart=new Map(items.filter(item=>item.remoteId).map(item=>[item.remoteId,item.revision]));syncing=true;syncGeneration++;syncIcon();
  try{const listing=await sessionAPI();if(sessionId!==polledSession)return;syncSessionChoices(listing.sessions);
- if(!sessionId){items=[];$('session-status').textContent='No sessions yet. Create one to add photos.';if(before!==syncFingerprint())render();return;}
- const requestedSession=sessionId,data=await sessionAPI('/'+requestedSession,'GET',undefined,{conditional:force!==true});
- if(data.unchanged){syncError='';$('session-status').textContent='Synced';return;}const merged=await mergePhotos(items,data.photos,{knownAtStart});
+ if(!sessionId){items=[];pendingUpdates=false;syncError='';$('session-status').textContent='No sessions yet. Create one to add photos.';if(before!==syncFingerprint())render();return;}
+ const requestedSession=sessionId,data=await sessionAPI('/'+requestedSession,'GET',undefined,{conditional:false});
+ const merged=await mergePhotos(items,data.photos,{knownAtStart});
  if(!shared||sessionId!==requestedSession)return;
- items=[...new Map(merged.filter(item=>!item.shredded).map(item=>[item.remoteId||item,item])).values()];syncError='';$('session-status').textContent='Synced';if(before!==syncFingerprint())render();
+ items=[...new Map(merged.filter(item=>!item.shredded).map(item=>[item.remoteId||item,item])).values()];pendingUpdates=false;syncError='';$('session-status').textContent='Synced';if(before!==syncFingerprint())render();
  }catch(e){syncError=e.message;$('session-status').textContent=e.message;}finally{syncing=false;syncIcon();}
 }
-async function loadSession(id){if(running||exporting)return;sessionId=id;saveSetting('audit-session',id);items=[];await refreshSession(true);}
+$('sync-cloud').onclick=()=>refreshSession();
+async function loadSession(id){if(running||exporting)return;sessionId=id;saveSetting('audit-session',id);items=[];pendingUpdates=false;syncError='';syncGeneration++;await refreshSession();}
 async function initSharedSessions(){
  if(typeof authConfig!=='function')return;
  try{const config=await authConfig();if(!config.enabled){accountReady=true;return;}if(!credentials()){location.replace('./login.html');return;}shared=true;$('sessions-panel').hidden=false;$('sign-out').hidden=false;$('sign-out').onclick=()=>{stopProcessing();shared=false;accountReady=false;items=[];closeOriginal();if(exportURL){URL.revokeObjectURL(exportURL);exportURL=null;}render();signOut();};
- const listing=await sessionAPI();const sessions=listing.sessions.filter(session=>!session.deleting);
- function options(){ $('session-select').replaceChildren();for(const session of sessions){const option=document.createElement('option');option.value=session.id;option.textContent=session.name;$('session-select').append(option);}}
+ const listing=await sessionAPI();const sessions=listing.sessions.filter(session=>!session.deleting).map(session=>({...session}));
+ function options(){ sessionChoicesSignature=sessionSignature(sessions);$('session-select').replaceChildren();for(const session of sessions){const option=document.createElement('option');option.value=session.id;option.textContent=session.name;$('session-select').append(option);}}
  syncSessionChoices=next=>{
  next=next.filter(session=>!session.deleting);
  const selected=$('session-select').value;
  if(next.map(s=>s.id+s.name).join('|')===sessions.map(s=>s.id+s.name).join('|'))return;
- sessions.splice(0,sessions.length,...next);options();
+ sessions.splice(0,sessions.length,...next.map(session=>({...session})));options();
  if(next.some(session=>session.id===selected))$('session-select').value=selected;
  else {if(running){cancelled=true;stopProcessing();}sessionId=next[0]?.id||null;$('session-select').value=sessionId||'';items=[];saveSetting('audit-session',sessionId||'');}
  };
@@ -290,6 +313,6 @@ async function initSharedSessions(){
  $('new-session').onclick=()=>{$('session-dialog').showModal();};
  $('cancel-session').onclick=()=>$('session-dialog').close();
  $('new-session-form').onsubmit=async event=>{event.preventDefault();await mutateSession(async()=>{const session=await sessionAPI('','POST',{name:$('session-name').value.trim()});sessions.push(session);options();$('session-select').value=session.id;sessionId=session.id;saveSetting('audit-session',session.id);items=[];$('session-dialog').close();});};
- accountReady=true;render();setInterval(refreshSession,10000);window.addEventListener('focus',refreshSession);window.addEventListener('pageshow',()=>{if(shared&&!credentials())location.replace('./login.html');});
+ accountReady=true;render();setInterval(checkSession,10000);window.addEventListener('focus',checkSession);window.addEventListener('pageshow',()=>{if(shared&&!credentials())location.replace('./login.html');});
  }catch(e){status(e.message,true);$('pick').disabled=true;}
 }

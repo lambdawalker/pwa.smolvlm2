@@ -86,3 +86,7 @@ Tests cover cloud request validation/signing/retries, browser flows, image crops
 ### Recovering photos
 
 Use **Retry failed photos** to upload failed photos again in place and resume pending or failed categorization, including in manual mode. Use **Restart categorization** to rerun active photos with the current prompt. Trash and unresolved sync conflicts are excluded. Both controls are in the bottom action bar and are disabled while a recovery is in progress. Keep the page open to retain files whose upload has not succeeded.
+
+### Checking for updates
+
+The cloud button is green after a successful sync. Background checks only detect changes; they never replace photos or session choices. When incoming changes are found, the button turns red. Press it to apply the latest cloud state, including conflict and Trash handling. Uploads and local edits continue saving immediately. The button stays at the far right of the status row, or at the far left with left-handed controls enabled.
