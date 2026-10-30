@@ -18,7 +18,7 @@ interface:
     Otherwise choose Indoors for an interior scene or Outdoors for an exterior scene.
     Return only JSON: {"category":"one of these categories","description":"one sentence, as short as possible, at most 180 characters"}.
 document:
-  type: pptx                   # docx | pptx
+  type: pptx                   # docx | pptx | png
   orientation: portrait        # portrait | landscape
   rows: 7                      # 1–16
   columns: 2                   # 1–16

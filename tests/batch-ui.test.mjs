@@ -137,3 +137,7 @@ test('duplicate cleanup Undo retains server snapshots while another session is o
  let finish;const photos=[{id:'a',revision:1,state:'done',category:'Indoors'}];const {e}=await app({photos,sessions:[{id:'s',name:'First'},{id:'other',name:'Second'}],api:async(path,method)=>{if(path==='/s/deduplicate')return new Promise(resolve=>{finish=resolve});if(method==='GET'&&path==='/other')return {photos:[]}}});
  const cleaning=e['deduplicate-photos'].onclick();await tick();e['session-select'].value='other';await e['session-select'].onchange();const before={...photos[0]};Object.assign(photos[0],{state:'trash',revision:2,userRevision:2});finish({moved:1,remaining:false,undoPhotos:[{before,revision:2}]});await cleaning;e['session-select'].value='s';await e['session-select'].onchange();await e.undo.onclick();assert.equal(photos[0].state,'done');
 });
+
+test('PNG format persists and uses one grid layout; Undo sits beside download in the action bar',async()=>{
+ const storage=new Map();const {e}=await app({storage});e['export-type'].value='png';e['export-type'].dispatchEvent(new Event('change'));assert.equal(e['export-icon-letter'].textContent,'PNG');assert.equal(e['export-layout'].children.length,1);assert.equal(e['export-layout'].value,'table');const next=await app({storage});assert.equal(next.e['export-type'].value,'png');assert.match(html,/<button id="export-document"[^]*?<\/button><button id="undo"[^]*?<\/button><button id="view-toggle"/);
+});

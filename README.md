@@ -118,3 +118,11 @@ The Undo button keeps a browser-local action stack for photo uploads (undo moves
 Settings → Controls configures the history limit (1–100 actions, default 20) and bulk-delete hold time (2 or 3 seconds, default 3). Delete all and Shred all require a continuous pointer or keyboard hold followed by a separate confirmation dialog. Releasing early, cancelling the pointer, leaving the button or losing focus cancels the hold. The dialog targets only the photos present when it opened.
 
 Document format, portrait/landscape orientation, rows, columns, layout and Add description are saved in this browser, alongside language, handedness, prompt, consent, view and diagnostic preferences. Saved valid values override YAML defaults. Undoing settings also saves the restored values. Language changes apply without reloading or discarding the Undo stack.
+
+### PNG page exports
+
+Select **PNG images (.png)** in Categorization settings, then use the download button. PNG uses the same category grouping, rows and columns as the Office exports: four planned document pages produce four PNG files. A single page downloads directly as PNG; multiple pages download together in one ZIP with numbered category filenames. Export runs in the browser and does not call the model again.
+
+PNGs contain a tightly packed photo grid, category heading and optional descriptions below the photos. There are no borders or page backgrounds; the small internal gutters are transparent. Empty trailing rows/columns and transparent outer padding are trimmed from each page. Images retain their page's photo size rather than stretching a partial page to fill a whole sheet.
+
+Print density is embedded as 300 DPI. Portrait exports fit within 6.25 × 8.75 inches; landscape exports fit within 8.75 × 6.25 inches before the final content trim. These bounds accommodate standard Letter/A4 Word text areas in the matching orientation. Word templates with custom margins, existing content or insertion-size preferences can still require adjustment. PNG is a flattened image; use Word export when editable captions and headings are needed.

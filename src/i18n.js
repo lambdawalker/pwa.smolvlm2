@@ -59,3 +59,5 @@ Object.assign(ES,{
 'Synchronized':'Sincronizado','Syncing updates…':'Sincronizando cambios…','Could not sync. Press to retry.':'No se pudo sincronizar. Pulsa para reintentar.'
 });
 Object.assign(ES,{'Settings are saved on this device. Undo history lasts until this page is closed or reloaded.':'La configuración se guarda en este dispositivo. El historial de deshacer dura hasta cerrar o recargar esta página.'});
+
+Object.assign(ES,{'PNG images (.png)':'Imágenes PNG (.png)','Download PNG pages':'Descargar páginas PNG','PNG pages created. ZIP download started.':'Páginas PNG creadas. Descarga ZIP iniciada.','PNG created. Download started.':'PNG creado. Descarga iniciada.','Could not load a photo for PNG export.':'No se pudo cargar una foto para exportar a PNG.','Could not create PNG image. Try fewer photos per page.':'No se pudo crear la imagen PNG. Prueba con menos fotos por página.'});

@@ -40,14 +40,21 @@ $('delete-hold-seconds').value=readSetting('audit-delete-hold-seconds',String(de
 if(!['2','3'].includes($('delete-hold-seconds').value))$('delete-hold-seconds').value='3';
 $('delete-hold-seconds').onchange=()=>{cancelDeleteHold();saveSetting('audit-delete-hold-seconds',$('delete-hold-seconds').value);updateClearAction();};
 function savedChoice(id,fallback,allowed){const value=readSetting('audit-'+id,String(fallback));$(id).value=allowed.includes(value)?value:String(fallback);}
-savedChoice('export-type',defaults.document.type,['docx','pptx']);
+savedChoice('export-type',defaults.document.type,['docx','pptx','png']);
 savedChoice('export-orientation',defaults.document.orientation,['portrait','landscape']);
 const dimensions=Array.from({length:16},(_,i)=>String(i+1));
 savedChoice('export-rows',defaults.document.rows,dimensions);
 savedChoice('export-columns',defaults.document.columns,dimensions);
 savedChoice('export-layout',defaults.document.layout,['table','cards']);
 $('export-description').checked=readSetting('audit-export-description',String(defaults.document.addDescription))==='true';
-function updateExportType(){const word=$('export-type').value==='docx';$('export-icon-letter').textContent=word?'W':'P';$('export-document').setAttribute('aria-label',word?'Create Word document':'Create PowerPoint document');$('export-document').title=word?'Create Word document':'Create PowerPoint document';$('export-layout-field').hidden=false;const previous=$('export-layout').value;$('export-layout').replaceChildren();for(const value of (word?['table']:['table','cards'])){const option=document.createElement('option');option.value=value;option.textContent=value==='cards'?'Cards':'Table';$('export-layout').append(option);}$('export-layout').value=word?'table':previous||'table';}
+function updateExportType(){
+ const type=$('export-type').value,powerpoint=type==='pptx';
+ $('export-icon-letter').textContent=type==='png'?'PNG':powerpoint?'P':'W';$('export-icon-letter').setAttribute('font-size',type==='png'?'6':'9');
+ const label=type==='png'?'Download PNG pages':powerpoint?'Create PowerPoint document':'Create Word document';$('export-document').setAttribute('aria-label',label);$('export-document').title=t(label);
+ $('export-layout-field').hidden=false;const previous=$('export-layout').value;$('export-layout').replaceChildren();
+ for(const value of (powerpoint?['table','cards']:['table'])){const option=document.createElement('option');option.value=value;option.textContent=value==='cards'?'Cards':'Table';$('export-layout').append(option);}
+ $('export-layout').value=powerpoint?(previous||'table'):'table';
+}
 $('export-type').onchange=updateExportType;updateExportType();
 let rememberedLayout=$('export-layout').value;
 $('cloud-consent').checked=readSetting('lens-consent',String(defaults.interface.cloudConsent))==='true';
@@ -325,14 +332,14 @@ $('export-document').onclick=async()=>{
  exporting=true;render();$('export-status').textContent='Creating document…';
  try{
   const type=$('export-type').value;
-  const options={type,rows:$('export-rows').value,columns:$('export-columns').value,layout:$('export-layout').value,showDescription:$('export-description').checked,orientation:$('export-orientation').value,language:getLanguage()};
+  const options={onProgress:(page,total)=>{$('export-status').textContent=(getLanguage()==='es'?'Creando página PNG ':'Creating PNG page ')+page+'/'+total;},type,rows:$('export-rows').value,columns:$('export-columns').value,layout:$('export-layout').value,showDescription:$('export-description').checked,orientation:$('export-orientation').value,language:getLanguage()};
   for(const item of items)if(item.state==='done'&&!item.exportImage&&item.preparedUrl)item.exportImage=await imageData(item.preparedUrl);
   const {createDocument}=await import('./export-document.js');
   const blob=await createDocument(items,options);
   if(exportURL)URL.revokeObjectURL(exportURL);
-  exportURL=URL.createObjectURL(blob);const link=document.createElement('a');link.href=exportURL;link.download=`audit-${new Date().toISOString().slice(0,10)}.${type}`;document.body.append(link);link.click();link.remove();
+  exportURL=URL.createObjectURL(blob);const link=document.createElement('a');link.href=exportURL;link.download=`audit-${new Date().toISOString().slice(0,10)}.${blob.type==='application/zip'?'zip':type}`;document.body.append(link);link.click();link.remove();
   const createdURL=exportURL;setTimeout(()=>{URL.revokeObjectURL(createdURL);if(exportURL===createdURL)exportURL=null;},60000);
-  $('export-status').textContent='Document created. Download started.';
+  $('export-status').textContent=t(type==='png'?(blob.type==='application/zip'?'PNG pages created. ZIP download started.':'PNG created. Download started.'):'Document created. Download started.');
  }catch(error){$('export-status').textContent=error.message||'Could not create the document. Try fewer photos.';}
  finally{exporting=false;render();}
 };

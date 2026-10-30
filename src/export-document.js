@@ -1,7 +1,7 @@
 import {t} from './i18n.js';
 import {exportPlan} from './export-plan.js';
-const title=(page,plan)=>t(page.category,plan.language)+(page.part>1?` (${plan.language==='es'?'continuación':'continued'} ${page.part})`:'');
-export async function createDocument(items,options){const plan=exportPlan(items,options);return plan.type==='docx'?word(plan):powerpoint(plan);}
+export const pageTitle=(page,plan)=>t(page.category,plan.language)+(page.part>1?` (${plan.language==='es'?'continuación':'continued'} ${page.part})`:'');
+export async function createDocument(items,options){const plan=exportPlan(items,options);if(plan.type==='png'){const {createPngExport}=await import('./export-png.js');return createPngExport(plan,options);}return plan.type==='docx'?word(plan):powerpoint(plan);}
 // All layouts share a clean photo grid. A small gutter belongs to each cell;
 // descriptions always sit below the photo and never compete alongside it.
 export function gridGeometry(width,height,columns,rows,description){
@@ -19,7 +19,7 @@ async function word(plan){
  const cellWidth=Math.floor(contentWidth*1440/plan.columns),children=[];
  const imageSize=Math.min(g.size,cellWidth/1440-g.gap); 
  for(const [pageIndex,page] of plan.pages.entries()){
-  children.push(new Paragraph({text:title(page,plan),heading:HeadingLevel.HEADING_1,pageBreakBefore:pageIndex>0,spacing:{before:0,after:120}}));
+  children.push(new Paragraph({text:pageTitle(page,plan),heading:HeadingLevel.HEADING_1,pageBreakBefore:pageIndex>0,spacing:{before:0,after:120}}));
   const rows=[];
   for(let r=0;r<Math.ceil(page.items.length/plan.columns);r++){
    const cells=[];
@@ -41,7 +41,7 @@ async function powerpoint(plan){
  pptx.defineLayout({name:'AUDIT_PORTRAIT',width:7.5,height:13.333});pptx.layout=plan.orientation==='portrait'?'AUDIT_PORTRAIT':'LAYOUT_WIDE';pptx.author='Audit';pptx.title='Photo categories';pptx.lang=plan.language==='es'?'es-MX':'en-US';
  const width=plan.orientation==='portrait'?6.7:12.53,height=plan.orientation==='portrait'?12.05:6.22;
  const g=gridGeometry(width,height,plan.columns,plan.rows,plan.showDescription);
- for(const page of plan.pages){const slide=pptx.addSlide();slide.addText(title(page,plan),{x:.4,y:.25,w:width,h:.45,fontSize:22,bold:true,color:'000000',margin:0});
+ for(const page of plan.pages){const slide=pptx.addSlide();slide.addText(pageTitle(page,plan),{x:.4,y:.25,w:width,h:.45,fontSize:22,bold:true,color:'000000',margin:0});
   page.items.forEach((item,i)=>{const x=.4+i%plan.columns*(g.w+g.gap),y=.85+Math.floor(i/plan.columns)*(g.h+g.gap);
    slide.addImage({data:item.image,x:x+(g.w-g.size)/2,y,w:g.size,h:g.size});
    if(plan.showDescription)slide.addText(item.description,{x,y:y+g.size+.035,w:g.w,h:g.text,fontSize:Math.max(4,Math.min(11,g.h*13)),color:'222222',margin:0,fit:'shrink',valign:'top',align:'center',breakLine:false});

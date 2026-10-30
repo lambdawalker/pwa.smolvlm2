@@ -3,8 +3,8 @@ import { CATEGORIES } from './batch-core.js';
 export function exportPlan(items,{type=defaults.document.type,rows=defaults.document.rows,columns=defaults.document.columns,layout=defaults.document.layout,showDescription=defaults.document.addDescription,orientation=defaults.document.orientation,language=defaults.interface.language}={}){
  columns=Number(columns);rows=Number(rows);
  if(!Number.isInteger(rows)||rows<1||rows>16)throw Error('Choose 1–16 rows.');
- if(type==='docx')layout='table';
- if(!['docx','pptx'].includes(type)||!['cards','table'].includes(layout))throw Error('Choose a document type, rows, and layout.');
+ if(type!=='pptx')layout='table';
+ if(!['docx','pptx','png'].includes(type)||!['cards','table'].includes(layout))throw Error('Choose a document type, rows, and layout.');
  if(!['portrait','landscape'].includes(orientation))throw Error('Choose portrait or landscape.');
  if(!Number.isInteger(columns)||columns<1||columns>16)throw Error('Choose 1–16 columns.');
  const perPage=rows*columns;
