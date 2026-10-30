@@ -67,7 +67,12 @@ func deploy(ctx *pulumi.Context) error {
 	}
 	accountEnv["BEDROCK_ENABLED"] = pulumi.String(fmt.Sprint(inferenceEnabled))
 	accountEnv["BEDROCK_REGION"] = pulumi.String(inferenceRegion)
-	apiDependencies := []pulumi.Resource{policy}
+	queue, err := classificationQueue(ctx, role, accountEnv["SESSIONS_STREAM_ARN"])
+	if err != nil {
+		return err
+	}
+	accountEnv["CLASSIFICATION_QUEUE_URL"] = queue.Queue.Url
+	apiDependencies := []pulumi.Resource{policy, queue.Permission, queue.LogPermission}
 	if inferencePolicy != nil {
 		apiDependencies = append(apiDependencies, inferencePolicy)
 	}
@@ -77,6 +82,15 @@ func deploy(ctx *pulumi.Context) error {
 		return err
 	}
 	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(29), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn(apiDependencies))
+	if err != nil {
+		return err
+	}
+
+	worker, err := lambda.NewFunction(ctx, "classification-worker", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(60), ReservedConcurrentExecutions: pulumi.Int(queue.Concurrency), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: queue.Logs.Name}}, pulumi.DependsOn(apiDependencies))
+	if err != nil {
+		return err
+	}
+	backgroundResources, err := classificationMappings(ctx, queue, fn, worker, accountEnv["SESSIONS_STREAM_ARN"])
 	if err != nil {
 		return err
 	}
@@ -164,7 +178,7 @@ func deploy(ctx *pulumi.Context) error {
 	}
 	var staticAssets []pulumi.Resource
 	var shells []string
-	backendReady := []pulumi.Resource{fn, api, stage, route, integration, distribution}
+	backendReady := append([]pulumi.Resource{fn, api, stage, route, integration, distribution}, backgroundResources...)
 	err = filepath.WalkDir("../dist", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

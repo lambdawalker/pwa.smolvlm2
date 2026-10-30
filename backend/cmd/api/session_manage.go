@@ -74,6 +74,23 @@ func deleteSession(ctx context.Context, store recordStore, user string, session 
 			return storeError(err)
 		}
 	}
+	// Jobs are removed before deleting the parent; late workers cannot recreate them.
+	jobs, err := store.List(ctx, owner, "JOB#")
+	if err != nil {
+		return storeError(err)
+	}
+	for i, data := range jobs {
+		if i >= 20 {
+			return apiJSON(202, map[string]bool{"deleting": true})
+		}
+		var job ClassificationJob
+		if json.Unmarshal(data, &job) != nil || !resourceID.MatchString(job.ID) {
+			return storeError(fmt.Errorf("invalid classification job"))
+		}
+		if err := store.Delete(ctx, owner, "JOB#"+job.ID); err != nil {
+			return storeError(err)
+		}
+	}
 	// Hash reservations live in the same session partition and must leave with it.
 	hashes, err := store.List(ctx, owner, "HASH#")
 	if err != nil {

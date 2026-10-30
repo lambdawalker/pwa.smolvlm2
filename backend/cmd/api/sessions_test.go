@@ -202,3 +202,30 @@ func (m *memoryRecords) TrashCandidates(ctx context.Context, now int64) ([]trash
 func (m *memoryRecords) ObjectSHA256(ctx context.Context, key string) (string, int64, error) {
 	return string(m.data["SHA#"+key]), m.sizes[key], nil
 }
+
+func (m *memoryRecords) PutPhotoJob(ctx context.Context, user string, s Session, p Photo, expected int, job ClassificationJob) error {
+	owner := sessionOwner(user, s.ID)
+	if m.rev["USER#"+user+"/SESSION#"+s.ID] != sessionRevision(s) || m.rev[owner+"/PHOTO#"+p.ID] != expected || m.rev[owner+"/JOB#"+job.ID] != 0 {
+		return errConflict
+	}
+	photo, _ := json.Marshal(p)
+	data, _ := json.Marshal(job)
+	m.Put(ctx, owner, "PHOTO#"+p.ID, photo, p.Revision, expected)
+	return m.Put(ctx, owner, "JOB#"+job.ID, data, job.Revision, 0)
+}
+func (m *memoryRecords) ObjectBytes(ctx context.Context, key string, max int64) ([]byte, error) {
+	return m.data["OBJECT#"+key], nil
+}
+func (m *memoryRecords) PendingJobs(ctx context.Context, now int64) ([]ClassificationJob, error) {
+	out := []ClassificationJob{}
+	for key, data := range m.data {
+		if !strings.Contains(key, "/JOB#") {
+			continue
+		}
+		var job ClassificationJob
+		if json.Unmarshal(data, &job) == nil && job.WakeAt > 0 && job.WakeAt <= now {
+			out = append(out, job)
+		}
+	}
+	return out, nil
+}

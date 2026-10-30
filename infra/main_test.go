@@ -33,6 +33,8 @@ func (m *infrastructureMocks) NewResource(args pulumi.MockResourceArgs) (string,
 	outputs["domainName"] = resource.NewStringProperty("test.cloudfront.net")
 	outputs["apiEndpoint"] = resource.NewStringProperty("https://test.execute-api.us-east-1.amazonaws.com")
 	outputs["executionArn"] = resource.NewStringProperty("arn:aws:execute-api:us-east-1:123456789012:api")
+	outputs["streamArn"] = resource.NewStringProperty("arn:aws:dynamodb:us-east-1:123456789012:table/audit/stream/test")
+	outputs["url"] = resource.NewStringProperty("https://sqs.us-east-1.amazonaws.com/123456789012/queue")
 	outputs["invokeArn"] = resource.NewStringProperty("arn:aws:apigateway:us-east-1:lambda:path/invocations")
 	if args.Name == "site-certificate" {
 		outputs["domainValidationOptions"] = resource.NewArrayProperty([]resource.PropertyValue{resource.NewObjectProperty(resource.NewPropertyMapFromMap(map[string]any{"domainName": "audit.apexfission.com", "resourceRecordName": "_validation.audit.apexfission.com", "resourceRecordValue": "_value.acm-validations.aws.", "resourceRecordType": "CNAME"}))})
@@ -49,6 +51,25 @@ func TestCustomDomainInfrastructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := m.resources
+	if r["audit-sessions"]["globalSecondaryIndexes"].ArrayValue()[0].ObjectValue()["name"].StringValue() != "classification-wake" {
+		t.Fatal("job recovery must use a bounded wake-time index")
+	}
+	if !strings.Contains(r["audit-session-access"]["policy"].StringValue(), "/index/classification-wake") {
+		t.Fatal("recovery index Query permission missing")
+	}
+	if !r["audit-sessions"]["streamEnabled"].BoolValue() {
+		t.Fatal("job dispatch stream missing")
+	}
+	if r["classification-queue"]["visibilityTimeoutSeconds"].NumberValue() != 360 || r["classification-worker"]["timeout"].NumberValue() != 60 {
+		t.Fatal("queue visibility must allow worker retries")
+	}
+	if r["classification-worker"]["reservedConcurrentExecutions"].NumberValue() != 2 {
+		t.Fatal("worker concurrency must default to two")
+	}
+	if r["classification-consumer"]["functionResponseTypes"].ArrayValue()[0].StringValue() != "ReportBatchItemFailures" {
+		t.Fatal("partial queue failures must be reported")
+	}
+
 	if _, inline := r["api"]["code"]; inline {
 		t.Fatal("Lambda must not upload inline ZIP code")
 	}

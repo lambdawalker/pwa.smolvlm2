@@ -20,6 +20,10 @@ import (
 var errConflict = errors.New("session conflict")
 
 type recordStore interface {
+	PutPhotoJob(context.Context, string, Session, Photo, int, ClassificationJob) error
+	ObjectBytes(context.Context, string, int64) ([]byte, error)
+	PendingJobs(context.Context, int64) ([]ClassificationJob, error)
+
 	ObjectSHA256(context.Context, string) (string, int64, error)
 	MarkShredded(context.Context, string, string, []byte) error
 	TrashCandidates(context.Context, int64) ([]trashRecord, error)
@@ -83,6 +87,7 @@ func (s *awsRecords) Put(ctx context.Context, owner, key string, data []byte, re
 	item := keys(owner, key)
 	item["data"] = av(string(data))
 	addPurgeTime(item, data)
+	addJobAttributes(item, data)
 	item["revision"] = &dt.AttributeValueMemberN{Value: strconv.Itoa(revision)}
 	in := &dynamodb.PutItemInput{TableName: aws.String(os.Getenv("SESSIONS_TABLE")), Item: item, ConditionExpression: aws.String("attribute_not_exists(pk)")}
 	if expected > 0 {
@@ -134,6 +139,7 @@ func (s *awsRecords) PutPhoto(ctx context.Context, parentOwner, parentKey string
 	item := keys(owner, key)
 	item["data"] = av(string(data))
 	addPurgeTime(item, data)
+	addJobAttributes(item, data)
 	item["revision"] = &dt.AttributeValueMemberN{Value: strconv.Itoa(revision)}
 	put := &dt.Put{TableName: table, Item: item, ConditionExpression: aws.String("attribute_not_exists(pk)")}
 	if expected > 0 {
@@ -223,4 +229,70 @@ func (s *awsRecords) ObjectSHA256(ctx context.Context, key string) (string, int6
 		return "", size, errors.New("image too large")
 	}
 	return hex.EncodeToString(digest.Sum(nil)), size, nil
+}
+
+func (s *awsRecords) PutPhotoJob(ctx context.Context, user string, session Session, p Photo, expected int, job ClassificationJob) error {
+	table := aws.String(os.Getenv("SESSIONS_TABLE"))
+	owner := sessionOwner(user, session.ID)
+	photoData, _ := json.Marshal(p)
+	jobData, _ := json.Marshal(job)
+	photo := keys(owner, "PHOTO#"+p.ID)
+	photo["data"] = av(string(photoData))
+	photo["revision"] = &dt.AttributeValueMemberN{Value: strconv.Itoa(p.Revision)}
+	record := keys(owner, "JOB#"+job.ID)
+	record["data"] = av(string(jobData))
+	record["revision"] = &dt.AttributeValueMemberN{Value: strconv.Itoa(job.Revision)}
+	addJobAttributes(record, jobData)
+	_, err := s.d.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: []dt.TransactWriteItem{
+		{ConditionCheck: &dt.ConditionCheck{TableName: table, Key: keys("USER#"+user, "SESSION#"+session.ID), ConditionExpression: aws.String("#r = :r"), ExpressionAttributeNames: map[string]string{"#r": "revision"}, ExpressionAttributeValues: map[string]dt.AttributeValue{":r": &dt.AttributeValueMemberN{Value: strconv.Itoa(sessionRevision(session))}}}},
+		{Put: &dt.Put{TableName: table, Item: photo, ConditionExpression: aws.String("#r = :r"), ExpressionAttributeNames: map[string]string{"#r": "revision"}, ExpressionAttributeValues: map[string]dt.AttributeValue{":r": &dt.AttributeValueMemberN{Value: strconv.Itoa(expected)}}}},
+		{Put: &dt.Put{TableName: table, Item: record, ConditionExpression: aws.String("attribute_not_exists(pk)")}},
+	}})
+	var conflict *dt.TransactionCanceledException
+	if errors.As(err, &conflict) {
+		for _, reason := range conflict.CancellationReasons {
+			if aws.ToString(reason.Code) == "ConditionalCheckFailed" {
+				return errConflict
+			}
+		}
+	}
+	return err
+}
+func addJobAttributes(item map[string]dt.AttributeValue, data []byte) {
+	var job ClassificationJob
+	if json.Unmarshal(data, &job) == nil && job.User != "" && job.SessionID != "" && job.PhotoID != "" {
+		item["kind"] = av("classification-job")
+		if job.WakeAt > 0 {
+			item["jobPending"] = av("pending")
+			item["jobWakeAt"] = &dt.AttributeValueMemberN{Value: strconv.FormatInt(job.WakeAt, 10)}
+		}
+	}
+}
+func (s *awsRecords) ObjectBytes(ctx context.Context, key string, max int64) ([]byte, error) {
+	object, err := s.s.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(os.Getenv("PHOTOS_BUCKET")), Key: aws.String(key)})
+	if err != nil {
+		return nil, err
+	}
+	defer object.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(object.Body, max+1))
+	if err == nil && int64(len(data)) > max {
+		err = errors.New("object too large")
+	}
+	return data, err
+}
+func (s *awsRecords) PendingJobs(ctx context.Context, now int64) ([]ClassificationJob, error) {
+	page, err := s.d.Query(ctx, &dynamodb.QueryInput{TableName: aws.String(os.Getenv("SESSIONS_TABLE")), IndexName: aws.String("classification-wake"), Limit: aws.Int32(20), KeyConditionExpression: aws.String("jobPending = :pending AND jobWakeAt <= :now"), ExpressionAttributeValues: map[string]dt.AttributeValue{":pending": av("pending"), ":now": &dt.AttributeValueMemberN{Value: strconv.FormatInt(now, 10)}}})
+	if err != nil {
+		return nil, err
+	}
+	out := []ClassificationJob{}
+	for _, item := range page.Items {
+		if data, ok := item["data"].(*dt.AttributeValueMemberS); ok {
+			var job ClassificationJob
+			if json.Unmarshal([]byte(data.Value), &job) == nil {
+				out = append(out, job)
+			}
+		}
+	}
+	return out, nil
 }

@@ -70,3 +70,9 @@ test('upload skips object PUTs when both hashes match a stored photo',async()=>{
  const oldFetch=globalThis.fetch,calls=[];globalThis.fetch=async(url,options)=>{calls.push({url,options});return json({duplicate:true,photo:{id:'existing',revision:3,state:'done'}});};
  try{const info={sourceHash:'a'.repeat(64),dHash:'0000000000000000',hashVersion:'dhash-8-v1'};const result=await uploadPhoto('s',new Blob(['original'],{type:'image/jpeg'}),{url:'data:unused',info});assert.equal(result.duplicate,true);assert.equal(result.id,'existing');assert.equal(calls.length,1);assert.equal(JSON.parse(calls[0].options.body).dHash,info.dHash);}finally{globalThis.fetch=oldFetch;}
 });
+
+test('server processing photos accept later results and failure statuses',async()=>{
+ const item={remoteId:'p',revision:2,state:'processing',jobId:'job'};
+ await mergePhotos([item],[{id:'p',revision:3,state:'done',category:'Indoors',description:'A room.',jobId:'job'}]);assert.equal(item.state,'done');assert.equal(item.description,'A room.');
+ await mergePhotos([item],[{id:'p',revision:4,state:'error',processingError:'Provider unavailable',jobId:'job'}]);assert.equal(item.state,'error');assert.equal(item.error,'Provider unavailable');
+});

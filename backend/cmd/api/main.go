@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-// Local inference stays in the browser; cloud requests are explicitly selected.
+// HTTP, queue and stream events share the Go artifact; only the HTTP function is public.
 func handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	if req.RawPath == "/internal/purge-trash" && req.RequestContext.HTTP.Method == "" {
 		store, err := storeFactory(ctx)
@@ -23,6 +23,11 @@ func handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.API
 		err = purgeTrash(ctx, store, time.Now().Unix())
 		if err != nil {
 			return storeError(err), err
+		}
+		if os.Getenv("CLASSIFICATION_QUEUE_URL") != "" {
+			if err := recoverClassificationJobs(ctx, store); err != nil {
+				return storeError(err), err
+			}
 		}
 		return apiJSON(200, map[string]bool{"purged": true}), nil
 	}
@@ -64,7 +69,7 @@ func handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.API
 
 func main() {
 	if os.Getenv("AWS_LAMBDA_RUNTIME_API") != "" {
-		lambda.Start(handle)
+		lambda.Start(backgroundHandler)
 		return
 	}
 	addr := os.Getenv("LISTEN_ADDR")

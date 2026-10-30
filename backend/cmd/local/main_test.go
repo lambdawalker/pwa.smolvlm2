@@ -11,3 +11,10 @@ func TestFrontendEnvironmentExcludesCredentials(t *testing.T) {
 		t.Fatal("unsafe environment", got)
 	}
 }
+
+func TestRuntimeUsesOnlyPublicIdentifiersAndKeepsOverrides(t *testing.T) {
+	got := withDeployedRuntime([]string{"SESSIONS_TABLE=custom"}, map[string]string{"SESSIONS_TABLE": "deployed", "COGNITO_POOL_ID": "pool", "AWS_SECRET_ACCESS_KEY": "secret"})
+	if !reflect.DeepEqual(got, []string{"SESSIONS_TABLE=custom", "COGNITO_POOL_ID=pool"}) {
+		t.Fatal(got)
+	}
+}

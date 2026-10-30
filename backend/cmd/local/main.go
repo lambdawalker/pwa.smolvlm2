@@ -93,6 +93,19 @@ func run() error {
 		}
 		backendEnv = append(backendEnv, entry)
 	}
+
+	var deployed map[string]string
+	if data, err := os.ReadFile(filepath.Join(root, ".deploy", "runtime.json")); err == nil {
+		if err = json.Unmarshal(data, &deployed); err != nil {
+			return fmt.Errorf("invalid local runtime settings: %w", err)
+		}
+	}
+	backendEnv = withDeployedRuntime(backendEnv, deployed)
+	if deployed["COGNITO_POOL_ID"] != "" {
+		fmt.Println("Using deployed sessions and background AWS workers for local categorization.")
+	} else {
+		fmt.Println("Describe is available locally. Run deploy first to enable signed-in sessions and background categorization.")
+	}
 	// npm.cmd must be launched through cmd.exe on Windows.
 	npm := exec.CommandContext(ctx, "npm", "ci")
 	if runtime.GOOS == "windows" {
@@ -168,4 +181,20 @@ func run() error {
 		}
 		return fmt.Errorf("a local server stopped: %v", err)
 	}
+}
+
+func withDeployedRuntime(env []string, values map[string]string) []string {
+	for _, key := range []string{"AWS_REGION", "COGNITO_POOL_ID", "COGNITO_CLIENT_ID", "SESSIONS_TABLE", "PHOTOS_BUCKET", "CLASSIFICATION_QUEUE_URL"} {
+		present := false
+		for _, entry := range env {
+			if strings.HasPrefix(entry, key+"=") {
+				present = true
+				break
+			}
+		}
+		if !present && values[key] != "" {
+			env = append(env, key+"="+values[key])
+		}
+	}
+	return env
 }

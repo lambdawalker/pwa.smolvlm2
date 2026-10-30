@@ -12,9 +12,9 @@ export async function sessionAPI(path='',method='GET',body,{conditional=false,si
  return data;
 }
 export async function imageData(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('Could not load a session photo. Refresh and retry.');const blob=await r.blob();return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('Could not read photo.'));reader.readAsDataURL(blob);});}
-export async function uploadPhoto(session,file,photo){
+export async function uploadPhoto(session,file,photo,settings={}){
  const hashes=validImageHashes(photo.info)?{sourceHash:photo.info.sourceHash,dHash:photo.info.dHash,hashVersion:photo.info.hashVersion}:{};
- const start=await sessionAPI(`/${session}/photos`,'POST',{mime:file.type||'image/jpeg',bytes:file.size,...hashes});
+ const start=await sessionAPI(`/${session}/photos`,'POST',{mime:file.type||'image/jpeg',bytes:file.size,...hashes,cloudConsent:settings.consent===true,inferencePrompt:settings.prompt||''});
  if(start.duplicate)return {...start.photo,duplicate:true};
  try{
   const prepared=await (await fetch(photo.url)).blob();
@@ -47,7 +47,7 @@ export async function mergePhotos(existing,photos,{knownAtStart}={}){
  if(photo.state==='uploading'){if(item)result.push(item);continue;}
  if(!item)item={remoteId:photo.id,file:{name:photo.id,type:photo.mime,size:photo.bytes}};
  if(item.reprocess&&(photo.state==='trash'||photo.conflict)&&photo.revision>=item.revision)delete item.reprocess;
- if(!item.dirty&&!item.reprocess&&item.state!=='processing'&&(!item.revision||photo.revision>=item.revision))Object.assign(item,{sourceHash:photo.sourceHash,dHash:photo.dHash,hashVersion:photo.hashVersion,sha256Verified:photo.sha256Verified,revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,conflict:!!photo.conflict,expiresAt:photo.expiresAt,error:photo.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':''});
+ if(!item.dirty&&!item.reprocess&&(!item.revision||photo.revision>=item.revision))Object.assign(item,{jobId:photo.jobId,promptHash:photo.promptHash,model:photo.inferenceModel,processingAttempts:photo.processingAttempts,sourceHash:photo.sourceHash,dHash:photo.dHash,hashVersion:photo.hashVersion,sha256Verified:photo.sha256Verified,revision:photo.revision,state:photo.state,category:photo.category,description:photo.description,rawOutput:photo.rawOutput,conflict:!!photo.conflict,expiresAt:photo.expiresAt,error:photo.conflict?'Conflicting changes from another device. Choose a category to keep this photo.':photo.processingError||''});
  item.preparedUrl=photo.preparedUrl;item.thumbnail=item.exportImage||photo.preparedUrl;item.originalUrl=photo.originalUrl;result.push(item);
  }
  for(const item of existing){if(!item.remoteId){result.push(item);continue;}if(!seen.has(item.remoteId)){if(!item.shredded&&knownAtStart&&!knownAtStart.has(item.remoteId))result.push(item);else item.shredded=true;}}

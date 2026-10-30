@@ -26,6 +26,14 @@ type Session struct {
 	Deleting bool   `json:"deleting,omitempty"`
 }
 type Photo struct {
+	PromptHash         string `json:"promptHash,omitempty"`
+	InferenceModel     string `json:"inferenceModel,omitempty"`
+	JobID              string `json:"jobId,omitempty"`
+	InferencePrompt    string `json:"inferencePrompt,omitempty"`
+	CloudConsent       bool   `json:"cloudConsent,omitempty"`
+	ProcessingError    string `json:"processingError,omitempty"`
+	ProcessingAttempts int    `json:"processingAttempts,omitempty"`
+
 	SourceHash     string `json:"sourceHash,omitempty"`
 	DHash          string `json:"dHash,omitempty"`
 	HashVersion    string `json:"hashVersion,omitempty"`
@@ -187,6 +195,9 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		response.Headers["etag"] = etag
 		return response
 	}
+	if len(path) == 4 && path[3] == "classify-pending" && method == "POST" {
+		return queuePendingPhotos(ctx, store, user, session, body)
+	}
 	if len(path) == 4 && path[3] == "deduplicate" && method == "POST" {
 		return trashDuplicatePhotos(ctx, store, user, session)
 	}
@@ -203,6 +214,17 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		if p.Bytes <= 0 || p.Bytes > maxOriginalBytes {
 			return cloudError(413, "Photos must be 25 MB or smaller.")
 		}
+		if p.CloudConsent && strings.TrimSpace(p.InferencePrompt) == "" {
+			p.InferencePrompt = defaultCategoryPrompt
+		}
+		if p.CloudConsent && !validJobPrompt(p.InferencePrompt) {
+			return cloudError(400, "Enter a categorization prompt of 1–1000 characters.")
+		}
+		p.JobID = ""
+		p.ProcessingError = ""
+		p.ProcessingAttempts = 0
+		p.PromptHash = ""
+		p.InferenceModel = ""
 		p.SHA256Verified = false
 		p.ID = newID()
 		claimSaved := false
@@ -248,6 +270,9 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 		}
 		claimSaved = true
 		return apiJSON(201, map[string]any{"photo": p, "originalUploadUrl": original, "preparedUploadUrl": prepared})
+	}
+	if len(path) == 6 && path[3] == "photos" && path[5] == "classify" && resourceID.MatchString(path[4]) && method == "POST" {
+		return reclassifyPhoto(ctx, store, user, session, path[4], body)
 	}
 	if len(path) == 6 && path[3] == "photos" && path[5] == "hashes" && resourceID.MatchString(path[4]) && method == "POST" {
 		return backfillPhotoHashes(ctx, store, user, session, path[4], body)
@@ -333,6 +358,12 @@ func sessionRoute(ctx context.Context, req events.APIGatewayV2HTTPRequest) event
 			p.RawOutput = in.RawOutput
 			p.Revision++
 			p.Updated = time.Now().UTC().Format(time.RFC3339Nano)
+			if p.State == "pending" && p.CloudConsent && p.JobID == "" {
+				if _, err := enqueuePhoto(ctx, store, user, session, &p, expected, p.InferencePrompt, true); err != nil {
+					return storeError(err)
+				}
+				return apiJSON(200, p)
+			}
 			if e := saveSessionPhoto(ctx, store, user, session, p, expected); e != nil {
 				return storeError(e)
 			}

@@ -6,10 +6,11 @@
 - Cloudflare has DNS-only records for the domain and ACM validation. ACM uses `us-east-1` for CloudFront certificates.
 - API Gateway HTTP API routes `/api/*` to an ARM64 Go Lambda.
 - Cognito handles signup, email verification, login and password resets.
-- DynamoDB stores user-owned sessions, photo revisions, conflicts and Trash state.
+- DynamoDB stores user-owned sessions, photo revisions, conflicts, Trash and durable categorization jobs. Streams dispatch newly inserted jobs.
+- An encrypted SQS queue and dead-letter queue feed a separate categorization Lambda, with two concurrent workers by default.
 - A separate encrypted, private S3 bucket stores original and prepared photos.
 - Amazon Bedrock runs `google.gemma-4-e2b` through the Mantle OpenAI-compatible endpoint.
-- EventBridge invokes Trash cleanup every five minutes. CloudWatch retains application logs for fourteen days.
+- EventBridge invokes Trash cleanup and stalled-job recovery every five minutes. CloudWatch retains application logs for fourteen days.
 - A separate private S3 artifact bucket stages encrypted Lambda ZIPs; the code update references their hash-addressed keys.
 - A private, versioned S3 state bucket and KMS key hold Pulumi state and encrypted configuration.
 
@@ -44,13 +45,13 @@ Supported E2B regions are `us-east-1`, `us-east-2`, `us-west-2`, `eu-central-1`.
 
 Lambda receives `BEDROCK_ENABLED` and `BEDROCK_REGION`, plus the existing account/storage configuration. Requests use AWS SigV4 service name `bedrock-mantle`, temporary role credentials and `/openai/v1/chat/completions`. JPEG data is inline, so the model does not receive a public photo URL. The UI sends a 384×384 center crop; original photos stay in private S3.
 
-The provider response must finish normally; empty, truncated, refused or malformed responses are surfaced safely. Only transient 500/502/503/504 responses retry, with a total deadline of 25 seconds. Prompts, image data, AWS credentials and provider response bodies are not logged. Bedrock manages runtime precision. Test model accuracy and latency with your actual photo set after deployment.
+The provider response must finish normally; empty, truncated, refused or malformed responses are surfaced safely. Each model request has a total deadline of 25 seconds and retries transient 500/502/503/504 responses within that deadline. Background jobs additionally retry transient/provider throttling failures for at most three worker attempts; access and model-configuration failures stop for review. Prompts, image data, AWS credentials and provider response bodies are not logged. Bedrock manages runtime precision. Test model accuracy and latency with your actual photo set after deployment.
 
 Existing `geminiApiKey` stack config is not consumed or passed to Lambda. It may be removed with `pulumi config rm geminiApiKey`; revoke its old Google key separately if no longer needed. Pulumi state history may retain encrypted historical values.
 
 ## Package uploads and deployment order
 
-A changed Lambda ZIP uploads to its private S3 artifact bucket before Lambda can load it. The Lambda API request then contains only an S3 reference and code hash. Frontend asset uploads depend on backend/API readiness, and HTML, manifest and service worker uploads depend on the assets. This prioritizes backend changes and avoids a long inline Lambda upload.
+A changed Lambda ZIP uploads to its private S3 artifact bucket before Lambda can load it. The Lambda API request then contains only an S3 reference and code hash. Frontend asset uploads depend on backend/API, worker and queue-mapping readiness, and HTML, manifest and service worker uploads depend on the assets. This prioritizes backend changes and avoids a long inline Lambda upload.
 
 `go build -buildvcs=false` prevents unrelated frontend Git commits from changing the backend binary. The ZIP has deterministic headers. When the package bytes are unchanged, the content-addressed object and Lambda source hash remain unchanged, avoiding a repeat upload. A changed backend, Go compiler or dependencies can legitimately produce a new ZIP. Uploading a changed package cannot be skipped.
 
@@ -70,7 +71,7 @@ The Cognito pool uses default email delivery for verification/reset. Configure S
 
 ## Local development
 
-`local.bat` / `local.sh` run Vite and the Go API, but inference remains in AWS. Reuse your saved profile or set `AWS_PROFILE`; sign in with `aws sso login --profile YOUR_PROFILE`. Set `BEDROCK_REGION` when needed. Only the Go API receives AWS credentials. The browser/Vite process receives no AWS credential environment variables. For local account/session integration, supply the deployed `COGNITO_POOL_ID`, `COGNITO_CLIENT_ID`, `AWS_REGION`, `SESSIONS_TABLE`, and `PHOTOS_BUCKET`. The photo bucket permits `http://localhost:5173` and `http://127.0.0.1:5173`, plus the configured HTTPS domain.
+`local.bat` / `local.sh` run Vite and the Go API, but inference remains in AWS. Reuse your saved profile or set `AWS_PROFILE`; sign in with `aws sso login --profile YOUR_PROFILE`. Set `BEDROCK_REGION` when needed. Only the Go API receives AWS credentials. The browser/Vite process receives no AWS credential environment variables. After deployment the wizard caches public identifiers in `.deploy/runtime.json` for local sessions and the same deployed background workers. Explicit environment variables override the cached identifiers. Without deployed session resources, Describe remains available for single-photo requests. The photo bucket permits `http://localhost:5173` and `http://127.0.0.1:5173`, plus the configured HTTPS domain.
 
 ## Validation and live checks
 
@@ -93,3 +94,15 @@ After deployment, verify `/api/health`, `/api/cloud`, signup/email verification,
 - https://docs.aws.amazon.com/bedrock/latest/userguide/models-get-info.html
 - https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-managed-agents-openai-security.html
 - https://www.pulumi.com/docs/iac/operations/stack-management/using-a-diy-backend/
+
+## Background job operation
+
+Photo/job creation is a single DynamoDB transaction guarded by the session and photo revisions. Only committed INSERTs with `kind=classification-job` are dispatched from the table stream. SQS messages contain identifiers; originals and prompts are not embedded in queue payloads. The worker reads private prepared JPEGs, uses recorded consent and the exact job prompt, and saves bounded JSON fields and raw output to the owned photo.
+
+Jobs use 90-second conditional leases, a 60-second worker timeout, 360-second queue visibility, a maximum of three application attempts, and partial SQS batch-failure responses. SQS redrives repeated infrastructure failures to a 14-day encrypted dead-letter queue after five receives. The main queue retains messages for four days. A five-minute bounded query on the sparse `classification-wake` DynamoDB index recovers stalled durable jobs, including expired worker leases. Duplicate delivery after a photo result was committed is acknowledged without another model call. Job records are removed when their session is deleted.
+
+Set `classificationConcurrency` to 2 (default) or 3 in Pulumi. These limits apply across sessions in the stack. API Lambda remains at 29 seconds for HTTP requests; the separate worker continues after the browser closes. Both use the existing IAM role with scoped table, private bucket, queue, stream and Bedrock permissions. Provider requests, public HTTP clients and the browser cannot invoke the worker through API Gateway.
+
+After deployment, upload a photo, wait for its upload to finish, close the browser and reopen the session later. Press the cloud icon to apply the saved result. Test retry/reclassification, deleting a processing photo, and a second device changing its category. Unit tests use simulated storage/provider responses; actual AWS event delivery and model access require this deployed smoke test.
+
+References: https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html and https://docs.aws.amazon.com/lambda/latest/dg/with-ddb.html

@@ -390,6 +390,11 @@ func wizard() error {
 		fmt.Println("If Pulumi reports recovered raw state mismatch, use the same backend and stack, run pulumi refresh --stack " + stack + " from infra, review the result, then rerun this wizard. Do not remove the stack or delete its state.")
 		return fmt.Errorf("deployment incomplete: %w; rerun this wizard with the same stack to resume", err)
 	}
+	if values, e := output(infra, "pulumi", "stack", "output", "--json"); e == nil {
+		if e = saveLocalRuntime(root, region, values); e != nil {
+			fmt.Println("Deployment succeeded; local runtime settings could not be saved:", e)
+		}
+	}
 	result := command(infra, "pulumi", "stack", "output", "url")
 	result.Stdout, result.Stderr = os.Stdout, os.Stderr
 	if err = result.Run(); err != nil {

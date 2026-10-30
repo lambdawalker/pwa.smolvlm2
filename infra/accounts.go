@@ -19,7 +19,7 @@ func accountInfrastructure(ctx *pulumi.Context, role *iam.Role) (pulumi.StringMa
 	if e != nil {
 		return nil, e
 	}
-	table, e := dynamodb.NewTable(ctx, "audit-sessions", &dynamodb.TableArgs{BillingMode: pulumi.String("PAY_PER_REQUEST"), HashKey: pulumi.String("pk"), RangeKey: pulumi.String("sk"), Attributes: dynamodb.TableAttributeArray{&dynamodb.TableAttributeArgs{Name: pulumi.String("pk"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("sk"), Type: pulumi.String("S")}}, ServerSideEncryption: &dynamodb.TableServerSideEncryptionArgs{Enabled: pulumi.Bool(true)}})
+	table, e := dynamodb.NewTable(ctx, "audit-sessions", &dynamodb.TableArgs{BillingMode: pulumi.String("PAY_PER_REQUEST"), StreamEnabled: pulumi.Bool(true), StreamViewType: pulumi.String("NEW_AND_OLD_IMAGES"), HashKey: pulumi.String("pk"), RangeKey: pulumi.String("sk"), Attributes: dynamodb.TableAttributeArray{&dynamodb.TableAttributeArgs{Name: pulumi.String("pk"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("sk"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("jobPending"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("jobWakeAt"), Type: pulumi.String("N")}}, GlobalSecondaryIndexes: dynamodb.TableGlobalSecondaryIndexArray{&dynamodb.TableGlobalSecondaryIndexArgs{Name: pulumi.String("classification-wake"), HashKey: pulumi.String("jobPending"), RangeKey: pulumi.String("jobWakeAt"), ProjectionType: pulumi.String("ALL")}}, ServerSideEncryption: &dynamodb.TableServerSideEncryptionArgs{Enabled: pulumi.Bool(true)}})
 	if e != nil {
 		return nil, e
 	}
@@ -45,7 +45,7 @@ func accountInfrastructure(ctx *pulumi.Context, role *iam.Role) (pulumi.StringMa
 		return nil, e
 	}
 	_, e = iam.NewRolePolicy(ctx, "audit-session-access", &iam.RolePolicyArgs{Role: role.ID(), Policy: pulumi.All(table.Arn, bucket.Arn).ApplyT(func(v []any) string {
-		b, _ := json.Marshal(map[string]any{"Version": "2012-10-17", "Statement": []any{map[string]any{"Effect": "Allow", "Action": []string{"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:UpdateItem", "dynamodb:Scan", "dynamodb:ConditionCheckItem"}, "Resource": v[0]}, map[string]any{"Effect": "Allow", "Action": []string{"s3:GetObject", "s3:PutObject", "s3:DeleteObject"}, "Resource": v[1].(string) + "/*"}}})
+		b, _ := json.Marshal(map[string]any{"Version": "2012-10-17", "Statement": []any{map[string]any{"Effect": "Allow", "Action": []string{"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:UpdateItem", "dynamodb:Scan", "dynamodb:ConditionCheckItem"}, "Resource": v[0]}, map[string]any{"Effect": "Allow", "Action": "dynamodb:Query", "Resource": v[0].(string) + "/index/classification-wake"}, map[string]any{"Effect": "Allow", "Action": []string{"s3:GetObject", "s3:PutObject", "s3:DeleteObject"}, "Resource": v[1].(string) + "/*"}}})
 		return string(b)
 	}).(pulumi.StringOutput)})
 	if e != nil {
@@ -55,5 +55,5 @@ func accountInfrastructure(ctx *pulumi.Context, role *iam.Role) (pulumi.StringMa
 	ctx.Export("userPoolClientId", client.ID())
 	ctx.Export("photosBucket", bucket.ID())
 	ctx.Export("sessionsTable", table.Name)
-	return pulumi.StringMap{"COGNITO_POOL_ID": pool.ID(), "COGNITO_CLIENT_ID": client.ID(), "SESSIONS_TABLE": table.Name, "PHOTOS_BUCKET": bucket.ID()}, nil
+	return pulumi.StringMap{"COGNITO_POOL_ID": pool.ID(), "COGNITO_CLIENT_ID": client.ID(), "SESSIONS_TABLE": table.Name, "PHOTOS_BUCKET": bucket.ID(), "SESSIONS_STREAM_ARN": table.StreamArn}, nil
 }

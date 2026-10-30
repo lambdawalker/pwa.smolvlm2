@@ -19,7 +19,7 @@ See [AWS deployment details](docs/aws-deployment.md).
 
 ## Photos and sessions
 
-Create an account, verify its email and log in on both devices. Create or open a session. Photo previews appear immediately, while originals and prepared images upload privately in the background. Categorization begins automatically by default; Settings can switch to manual start. Images are scaled to make the shorter side 384 pixels, then center-cropped to 384×384 before inference. Full originals remain available by clicking a photo.
+Create an account, verify its email and log in on both devices. Create or open a session. Photo previews appear immediately, while originals and prepared images upload privately in the background. When an upload finishes, categorization is queued automatically in AWS and continues after the browser closes. Settings records AWS consent and the prompt for each new job. Images are scaled to make the shorter side 384 pixels, then center-cropped to 384×384 before inference. Full originals remain available by clicking a photo.
 
 Categories are **Indoors**, **Outdoors**, **Documents**, and **Computer screens**. The editable prompt asks for JSON `{category, description}` with a description of one sentence, as short as possible. The UI limits description length. English and Spanish are supported. Describe is a separate cloud-only page for a single photo and custom prompt.
 
@@ -43,7 +43,7 @@ The Go API calls `google.gemma-4-e2b` at the regional **bedrock-mantle** `/opena
 
 Default region is `us-east-1`; supported regions are `us-east-1`, `us-east-2`, `us-west-2`, and `eu-central-1`. Override with `pulumi config set bedrockRegion REGION` in `infra`. Disable inference with `pulumi config set bedrockEnabled false` and deploy. Bedrock on-demand requests are billed by AWS; this setup does not provision an always-on GPU instance. Runtime precision is AWS-managed and not disclosed.
 
-Prepared JPEGs, prompts and returned text are validated/bounded. Provider bodies, AWS credentials and reasoning text are never forwarded to the browser or logged. Requests share a 25-second deadline; only explicit transient server errors retry, up to three attempts. Throttles and access failures do not retry silently. There is no Google fallback.
+Prepared JPEGs, prompts and returned text are validated/bounded. Provider bodies, AWS credentials and reasoning text are never forwarded to the browser or logged. Requests share a 25-second deadline; only explicit transient server errors retry, up to three attempts. Background jobs retry transient failures and throttles up to three worker attempts; access/configuration failures stop for manual review. There is no Google fallback.
 
 Existing encrypted `geminiApiKey` config is unused. You may remove it with `pulumi config rm geminiApiKey` and revoke the old key in Google Cloud. Do not remove other stack state or KMS keys.
 
@@ -56,7 +56,7 @@ aws sso login --profile attestra
 .\local.bat
 ```
 
-Use `sh ./local.sh` on Linux/macOS. Set `AWS_PROFILE` and `BEDROCK_REGION` to override saved values. The local identity needs `bedrock-mantle:GetModel` for the startup check and `bedrock-mantle:CreateInference` for the selected model. AWS credentials are passed only to the Go process, not Vite. To test accounts and sessions locally, also supply the existing stack's `COGNITO_POOL_ID`, `COGNITO_CLIENT_ID`, `AWS_REGION`, `SESSIONS_TABLE` and `PHOTOS_BUCKET`.
+Use `sh ./local.sh` on Linux/macOS. Set `AWS_PROFILE` and `BEDROCK_REGION` to override saved values. The local identity needs `bedrock-mantle:GetModel` for the startup check and `bedrock-mantle:CreateInference` for the selected model. AWS credentials are passed only to the Go process, not Vite. After deployment, the wizard saves public resource identifiers in `.deploy/runtime.json`; the launcher reuses them for signed-in sessions and background categorization. Explicit environment variables override those identifiers. Without deployed sessions, use Describe for a local single-photo request.
 
 Static hosting/`npm run preview` can preview the interface, but cloud inference and shared sessions require the Go API. Phone browser access should use HTTPS; the deployed PWA does not require WebGPU. The old model-download URL redirects to Categorize. Retired browser model caches are cleared on the next updated-page load.
 
@@ -85,7 +85,7 @@ Tests cover cloud request validation/signing/retries, browser flows, image crops
 
 ### Recovering photos
 
-Use **Retry failed photos** to upload failed photos again in place and resume pending or failed categorization, including in manual mode. Use **Restart categorization** to rerun active photos with the current prompt. Trash and unresolved sync conflicts are excluded. Both controls are in the bottom action bar and are disabled while a recovery is in progress. Keep the page open to retain files whose upload has not succeeded.
+Upload failures keep their local previews. **Retry uploads** resends failed files in place. Categorization itself has no batch start/stop/restart controls: it runs in AWS. A failed or invalid result has a per-photo **Retry** action; completed photos have **Reclassify**, using the current prompt. Keep the page open until file uploads finish; once the job is recorded, closing the page does not interrupt processing.
 
 ### Checking for updates
 
@@ -102,3 +102,11 @@ For older sessions, open **Settings → Duplicate photos → Index existing phot
 Hash reservations are released on shredding and removed on session deletion. A replacement gets a new photo ID so stale clients cannot affect it. If a device disappears halfway through an upload, a later retry can retire an abandoned reservation after ten minutes. No extra AWS resource or model API call is needed for hashing.
 
 If a session already has repeated images, indexing checks all its photos (without downloading originals again when their hashes are verified). Then use **Move duplicate copies to Trash**. Cleanup groups only exact SHA-256 + dHash pairs, retains one active photo per group (preferring a categorized copy), and moves the rest to Trash in resumable batches. Copies already in Trash are left alone. Descriptions and raw results stay with their respective copies; no information is merged or permanently deleted by cleanup. Photos without verified hashes are excluded until indexed. Finally press the red cloud icon to update the visible session. Trash retains the existing two-day recovery window.
+
+### Durable background categorization
+
+Upload finalization atomically updates the photo and creates a job in DynamoDB. DynamoDB Streams dispatches the job to SQS, and a separate ARM64 Lambda processes it with Gemma. The worker uses a conditional lease and job ID, so duplicate deliveries do not repeat an inference whose result was committed and late results cannot overwrite manual edits, Trash, shredding or a newer job. A five-minute recovery pass uses a sparse wake-time index to resend stalled jobs if stream dispatch or a worker was interrupted.
+
+The worker timeout is 60 seconds; queue visibility is 360 seconds. There are three application attempts for transient failures and two concurrent workers by default. `pulumi config set classificationConcurrency 3` allows three workers. The queue has a dead-letter queue for repeated infrastructure failures. No always-on server is added. Inference and queue/Lambda use are billed by AWS. Job prompts and consent are captured before processing; changing Settings affects future jobs, and Reclassify explicitly creates a new job. Existing unprocessed photos are queued when a signed-in session is opened with consent enabled.
+
+Results are saved automatically in AWS. The PWA still checks for updates without applying them; press the red cloud icon to see queued, processing, retrying, completed or failed results. Moving a queued photo to Trash prevents further processing when the worker observes it; an already running provider request may finish, but its result cannot restore the photo. Describe remains an interactive single-photo request, separate from this durable session workflow.

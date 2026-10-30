@@ -4,8 +4,6 @@ export const defaults = {
     "language": "en",
     "model": "gemma-cloud",
     "view": "grid",
-    "autoCategorize": true,
-    "simultaneousImages": 2,
     "leftHanded": false,
     "cloudConsent": true,
     "showImageDetails": false,
