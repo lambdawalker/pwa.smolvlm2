@@ -34,8 +34,8 @@ async function app({photos=[],sessions=[{id:'s',name:'Visit'}],auth=true,mobile=
  await tick();return {e,events,calls,files,revoked,photos,sessions};
 }
 const file={name:'photo.jpg',size:100,type:'image/jpeg'};
-const cards=e=>e.groups.children.flatMap(section=>section.children[1].children);
-const action=(e,label)=>cards(e).flatMap(c=>c.children).find(child=>child.textContent===label);
+const cards=e=>e.groups.children.filter(section=>section.id!=='category-page-View-all').flatMap(section=>section.children.find(child=>child.className==='photo-grid').children);
+const action=(e,label)=>cards(e).flatMap(c=>c.children.flatMap(child=>[child,...child.children])).find(child=>child.textContent===label||child.attrs['aria-label']===label);
 test('categorization has no browser start, stop or restart controls and uploads queue AWS jobs',async()=>{
  for(const id of ['start','cancel','restart-categorization','auto-categorize','image-concurrency'])assert.doesNotMatch(html,new RegExp('id="'+id+'"'));
  const {e,calls}=await app();await e.photos.onchange({target:{files:[file]}});const upload=calls.find(c=>c.path==='upload');assert.equal(upload.settings.consent,true);assert.match(upload.settings.prompt,/Return only JSON/);assert.ok(cards(e).some(card=>card.children.some(child=>child.textContent==='Queued in AWS')));assert.equal(action(e,'Retry'),undefined);
@@ -65,7 +65,7 @@ test('document panel and grid/list toggle remain independent',async()=>{
  const {e}=await app();e['document-settings-panel'].hidden=true;e['document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,false);e['close-document-settings'].onclick();assert.equal(e['document-settings-panel'].hidden,true);e['view-toggle'].onclick();assert.match(e.groups.className,/list-view/);e['view-toggle'].onclick();assert.doesNotMatch(e.groups.className,/list-view/);
 });
 test('mobile category swipe wraps and vertical motion does not switch category',async()=>{
- const {e}=await app({mobile:true,photos:[{id:'a',revision:1,state:'done',category:'Indoors'},{id:'b',revision:1,state:'done',category:'Outdoors'}]});const swipe=(x,y)=>{e['categorize-page'].events.touchstart({touches:[{clientX:150,clientY:100}],target:{closest:()=>null}});e['categorize-page'].events.touchend({changedTouches:[{clientX:x,clientY:y}]})};const active=()=>e.groups.children.findIndex(s=>s.className.includes('active-category'));assert.equal(active(),0);swipe(40,110);assert.equal(active(),1);swipe(40,110);assert.equal(active(),0);swipe(145,300);assert.equal(active(),0);
+ const {e}=await app({mobile:true,photos:[{id:'a',revision:1,state:'done',category:'Indoors'},{id:'b',revision:1,state:'done',category:'Outdoors'}]});const swipe=(x,y)=>{e['categorize-page'].events.touchstart({touches:[{clientX:150,clientY:100}],target:{closest:()=>null}});e['categorize-page'].events.touchend({changedTouches:[{clientX:x,clientY:y}]})};const active=()=>e.groups.children.findIndex(s=>s.className.includes('active-category'));assert.equal(active(),0);swipe(40,110);assert.equal(active(),1);swipe(40,110);assert.equal(active(),2);swipe(40,110);assert.equal(active(),0);swipe(145,300);assert.equal(active(),0);
 });
 test('session renames and deletions arrive automatically',async()=>{
  const {e,events,sessions}=await app();sessions[0].name='Renamed';await events.focus();assert.equal(e['session-select'].children[0].textContent,'Renamed');sessions.splice(0);await events.focus();assert.equal(e.pick.disabled,true);
@@ -140,4 +140,15 @@ test('duplicate cleanup Undo retains server snapshots while another session is o
 
 test('PNG format persists and uses one grid layout; Undo sits beside download in the action bar',async()=>{
  const storage=new Map();const {e}=await app({storage});e['export-type'].value='png';e['export-type'].dispatchEvent(new Event('change'));assert.equal(e['export-icon-letter'].textContent,'PNG');assert.equal(e['export-layout'].children.length,1);assert.equal(e['export-layout'].value,'table');const next=await app({storage});assert.equal(next.e['export-type'].value,'png');assert.match(html,/<button id="export-document"[^]*?<\/button><button id="undo"[^]*?<\/button><button id="view-toggle"/);
+});
+
+test('View all excludes Trash, sorts by updated date and category, and owns separate cards',async()=>{
+ const {e}=await app({photos:[{id:'a',state:'done',category:'Outdoors',updated:'2026-10-01',description:'Older'}, {id:'b',state:'done',category:'Indoors',updated:'2026-10-03',description:'Newer'}, {id:'c',state:'trash',description:'Deleted'}]});
+ const page=e.groups.children.find(p=>p.id==='category-page-View-all');const grid=page.children.find(c=>c.className==='photo-grid');const sort=page.children.find(c=>c.className==='all-sort');const description=card=>card.children.find(c=>c.className==='card-caption').children[0].textContent;
+ assert.equal(grid.children.length,2);assert.equal(description(grid.children[0]),'Newer');assert.ok(!cards(e).includes(grid.children[0]));sort.value='oldest';sort.onchange();assert.equal(description(grid.children[0]),'Older');sort.value='category';sort.onchange();assert.equal(description(grid.children[0]),'Newer');
+ const caption=grid.children[0].children.find(c=>c.className==='card-caption');assert.equal(caption.children[1].attrs['aria-label'],'Reclassify');assert.match(caption.children[1].innerHTML,/<svg/);
+});
+test('dropping photos requires confirmation and cancellation uploads nothing',async()=>{
+ const {e,events,calls}=await app();let prevented=false;const drop=()=>events.drop({preventDefault(){prevented=true},dataTransfer:{types:['Files'],files:[file,{name:'notes.txt',type:'text/plain'}]}});
+ drop();assert.ok(prevented);assert.ok(e['drop-confirm'].open);assert.equal(e['drop-count'].textContent,'1');assert.ok(!calls.some(c=>c.path==='upload'));e['drop-cancel'].onclick();assert.ok(!e['drop-confirm'].open);assert.ok(!calls.some(c=>c.path==='upload'));drop();e['drop-upload'].onclick();await tick();assert.equal(calls.filter(c=>c.path==='upload').length,1);
 });

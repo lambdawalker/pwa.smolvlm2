@@ -65,3 +65,5 @@ svg[hidden]{display:none!important}.export-controls>.setting-toggle{display:flex
 #delete-dialog h2{font:600 20px/1.4 system-ui;margin-top:0}
 .dialog-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}
 @media(prefers-reduced-motion:reduce){[data-active=true] svg,#upload-icon[data-active=true]{animation:none;opacity:.65}}
+
+.card-caption{display:flex;align-items:center;gap:8px;min-width:0}.card-caption .card-description{flex:1;margin:0;min-width:0}.card-caption .photo-reclassify{flex:none;width:36px;height:36px;min-height:36px;padding:7px;margin-left:auto;background:transparent;color:var(--ink,#203a34)}.card-caption svg{width:22px;height:22px}.all-sort{font:inherit;padding:6px 10px;margin:0 0 12px}.list-view .card-caption{grid-column:2 / -1}#drop-confirm{border:0;border-radius:16px;padding:24px;max-width:90vw}#drop-confirm::backdrop{background:#0006}

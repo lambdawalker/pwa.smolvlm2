@@ -1,6 +1,7 @@
 import { defaults } from './defaults.generated.js';
 export function getLanguage(){try{return (localStorage.getItem('audit-language')??defaults.interface.language)==='es'?'es':'en';}catch{return defaults.interface.language;}}
 export const ES={
+'View all':'Ver todas','Sort photos':'Ordenar fotos','Recently updated':'Actualizadas recientemente','Oldest updated':'Actualizadas hace más tiempo','Category':'Categoría','Upload photos?':'¿Subir fotos?','photos selected':'fotos seleccionadas','Upload':'Subir',
 'Processing in AWS':'Procesando en AWS','Queued in AWS':'En cola en AWS','Retrying in AWS':'Reintentando en AWS','Waiting for AWS consent':'Esperando consentimiento para AWS','Retry':'Reintentar','Reclassify':'Volver a clasificar','Retry uploads':'Reintentar cargas',
 
 'Move duplicate copies to Trash':'Mover copias duplicadas a la papelera','Duplicate copies moved to Trash:':'Copias duplicadas movidas a la papelera:','Keeps one copy, preferring a categorized photo. Extra copies stay in Trash for two days.':'Conserva una copia, preferentemente una foto clasificada. Las copias adicionales permanecen dos días en la papelera.','Index remaining photos to check all duplicates.':'Indexa las fotos pendientes para comprobar todos los duplicados.','Press the cloud icon to apply changes.':'Pulsa el icono de nube para aplicar los cambios.','Duplicate cleanup stopped. Retry to continue.':'Limpieza de duplicados detenida. Reintenta para continuar.',
