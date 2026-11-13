@@ -30,7 +30,7 @@ func deploy(ctx *pulumi.Context) error {
 			return fmt.Errorf("missing build artifact %s: run npm run build:aws from the repository root: %w", path, err)
 		}
 	}
-	bucket, err := s3.NewBucketV2(ctx, "web", &s3.BucketV2Args{})
+	bucket, err := s3.NewBucketV2(ctx, "web", &s3.BucketV2Args{Tags: projectTags(ctx)})
 	if err != nil {
 		return err
 	}
@@ -38,15 +38,15 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	oac, err := cloudfront.NewOriginAccessControl(ctx, "web-access", &cloudfront.OriginAccessControlArgs{OriginAccessControlOriginType: pulumi.String("s3"), SigningBehavior: pulumi.String("always"), SigningProtocol: pulumi.String("sigv4")})
+	oac, err := cloudfront.NewOriginAccessControl(ctx, "web-access", &cloudfront.OriginAccessControlArgs{Description: pulumi.String(projectLabel(ctx)), OriginAccessControlOriginType: pulumi.String("s3"), SigningBehavior: pulumi.String("always"), SigningProtocol: pulumi.String("sigv4")})
 	if err != nil {
 		return err
 	}
-	role, err := iam.NewRole(ctx, "api-role", &iam.RoleArgs{AssumeRolePolicy: pulumi.String(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}`)})
+	role, err := iam.NewRole(ctx, "api-role", &iam.RoleArgs{Description: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx), AssumeRolePolicy: pulumi.String(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}`)})
 	if err != nil {
 		return err
 	}
-	logs, err := cloudwatch.NewLogGroup(ctx, "api-logs", &cloudwatch.LogGroupArgs{RetentionInDays: pulumi.Int(14)})
+	logs, err := cloudwatch.NewLogGroup(ctx, "api-logs", &cloudwatch.LogGroupArgs{Tags: projectTags(ctx), RetentionInDays: pulumi.Int(14)})
 	if err != nil {
 		return err
 	}
@@ -81,12 +81,12 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(29), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn(apiDependencies))
+	fn, err := lambda.NewFunction(ctx, "api", &lambda.FunctionArgs{Description: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx), Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(29), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: logs.Name}}, pulumi.DependsOn(apiDependencies))
 	if err != nil {
 		return err
 	}
 
-	worker, err := lambda.NewFunction(ctx, "classification-worker", &lambda.FunctionArgs{Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(60), ReservedConcurrentExecutions: pulumi.Int(queue.Concurrency), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: queue.Logs.Name}}, pulumi.DependsOn(apiDependencies))
+	worker, err := lambda.NewFunction(ctx, "classification-worker", &lambda.FunctionArgs{Description: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx), Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(60), ReservedConcurrentExecutions: pulumi.Int(queue.Concurrency), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: queue.Logs.Name}}, pulumi.DependsOn(apiDependencies))
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	rule, err := cloudwatch.NewEventRule(ctx, "trash-cleanup", &cloudwatch.EventRuleArgs{ScheduleExpression: pulumi.String("rate(5 minutes)")})
+	rule, err := cloudwatch.NewEventRule(ctx, "trash-cleanup", &cloudwatch.EventRuleArgs{Description: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx), ScheduleExpression: pulumi.String("rate(5 minutes)")})
 	if err != nil {
 		return err
 	}
@@ -106,11 +106,11 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	api, err := apigatewayv2.NewApi(ctx, "http-api", &apigatewayv2.ApiArgs{ProtocolType: pulumi.String("HTTP")})
+	api, err := apigatewayv2.NewApi(ctx, "http-api", &apigatewayv2.ApiArgs{Description: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx), ProtocolType: pulumi.String("HTTP")})
 	if err != nil {
 		return err
 	}
-	integration, err := apigatewayv2.NewIntegration(ctx, "api-integration", &apigatewayv2.IntegrationArgs{ApiId: api.ID(), IntegrationType: pulumi.String("AWS_PROXY"), IntegrationUri: fn.InvokeArn, PayloadFormatVersion: pulumi.String("2.0")})
+	integration, err := apigatewayv2.NewIntegration(ctx, "api-integration", &apigatewayv2.IntegrationArgs{Description: pulumi.String(projectLabel(ctx)), ApiId: api.ID(), IntegrationType: pulumi.String("AWS_PROXY"), IntegrationUri: fn.InvokeArn, PayloadFormatVersion: pulumi.String("2.0")})
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func deploy(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	stage, err := apigatewayv2.NewStage(ctx, "api-stage", &apigatewayv2.StageArgs{ApiId: api.ID(), Name: pulumi.String("$default"), AutoDeploy: pulumi.Bool(true), DefaultRouteSettings: &apigatewayv2.StageDefaultRouteSettingsArgs{ThrottlingBurstLimit: pulumi.Int(20), ThrottlingRateLimit: pulumi.Float64(10)}}, pulumi.DependsOn([]pulumi.Resource{route}))
+	stage, err := apigatewayv2.NewStage(ctx, "api-stage", &apigatewayv2.StageArgs{Description: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx), ApiId: api.ID(), Name: pulumi.String("$default"), AutoDeploy: pulumi.Bool(true), DefaultRouteSettings: &apigatewayv2.StageDefaultRouteSettingsArgs{ThrottlingBurstLimit: pulumi.Int(20), ThrottlingRateLimit: pulumi.Float64(10)}}, pulumi.DependsOn([]pulumi.Resource{route}))
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func deploy(ctx *pulumi.Context) error {
 		return err
 	}
 	// A zero minimum TTL lets Cache-Control:no-cache on the app shell take effect.
-	cache, err := cloudfront.NewCachePolicy(ctx, "web-cache", &cloudfront.CachePolicyArgs{MinTtl: pulumi.Int(0), DefaultTtl: pulumi.Int(0), MaxTtl: pulumi.Int(31536000), ParametersInCacheKeyAndForwardedToOrigin: &cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginArgs{EnableAcceptEncodingGzip: pulumi.Bool(true), EnableAcceptEncodingBrotli: pulumi.Bool(true), CookiesConfig: &cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginCookiesConfigArgs{CookieBehavior: pulumi.String("none")}, HeadersConfig: &cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginHeadersConfigArgs{HeaderBehavior: pulumi.String("none")}, QueryStringsConfig: &cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginQueryStringsConfigArgs{QueryStringBehavior: pulumi.String("none")}}})
+	cache, err := cloudfront.NewCachePolicy(ctx, "web-cache", &cloudfront.CachePolicyArgs{Comment: pulumi.String(projectLabel(ctx)), MinTtl: pulumi.Int(0), DefaultTtl: pulumi.Int(0), MaxTtl: pulumi.Int(31536000), ParametersInCacheKeyAndForwardedToOrigin: &cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginArgs{EnableAcceptEncodingGzip: pulumi.Bool(true), EnableAcceptEncodingBrotli: pulumi.Bool(true), CookiesConfig: &cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginCookiesConfigArgs{CookieBehavior: pulumi.String("none")}, HeadersConfig: &cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginHeadersConfigArgs{HeaderBehavior: pulumi.String("none")}, QueryStringsConfig: &cloudfront.CachePolicyParametersInCacheKeyAndForwardedToOriginQueryStringsConfigArgs{QueryStringBehavior: pulumi.String("none")}}})
 	if err != nil {
 		return err
 	}
@@ -140,12 +140,12 @@ func deploy(ctx *pulumi.Context) error {
 		if err != nil {
 			return err
 		}
-		cert, err := acm.NewCertificate(ctx, "site-certificate", &acm.CertificateArgs{DomainName: pulumi.String(domain), ValidationMethod: pulumi.String("DNS")}, pulumi.Provider(east))
+		cert, err := acm.NewCertificate(ctx, "site-certificate", &acm.CertificateArgs{Tags: projectTags(ctx), DomainName: pulumi.String(domain), ValidationMethod: pulumi.String("DNS")}, pulumi.Provider(east))
 		if err != nil {
 			return err
 		}
 		option := cert.DomainValidationOptions.Index(pulumi.Int(0))
-		record, err := cloudflare.NewDnsRecord(ctx, "certificate-dns", &cloudflare.DnsRecordArgs{ZoneId: pulumi.String(zone), Name: option.ResourceRecordName().Elem(), Content: option.ResourceRecordValue(), Type: option.ResourceRecordType().Elem(), Ttl: pulumi.Float64(60), Proxied: pulumi.Bool(false)})
+		record, err := cloudflare.NewDnsRecord(ctx, "certificate-dns", &cloudflare.DnsRecordArgs{Comment: pulumi.String(projectLabel(ctx)), ZoneId: pulumi.String(zone), Name: option.ResourceRecordName().Elem(), Content: option.ResourceRecordValue(), Type: option.ResourceRecordType().Elem(), Ttl: pulumi.Float64(60), Proxied: pulumi.Bool(false)})
 		if err != nil {
 			return err
 		}
@@ -156,7 +156,7 @@ func deploy(ctx *pulumi.Context) error {
 		aliases = append(aliases, pulumi.String(domain))
 		certificate = &cloudfront.DistributionViewerCertificateArgs{AcmCertificateArn: validated.CertificateArn, SslSupportMethod: pulumi.String("sni-only"), MinimumProtocolVersion: pulumi.String("TLSv1.2_2021")}
 	}
-	distribution, err := cloudfront.NewDistribution(ctx, "site", &cloudfront.DistributionArgs{
+	distribution, err := cloudfront.NewDistribution(ctx, "site", &cloudfront.DistributionArgs{Comment: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx),
 		Aliases: aliases, Enabled: pulumi.Bool(true), IsIpv6Enabled: pulumi.Bool(true), DefaultRootObject: pulumi.String("index.html"), PriceClass: pulumi.String("PriceClass_100"),
 		Origins: cloudfront.DistributionOriginArray{
 			&cloudfront.DistributionOriginArgs{OriginId: pulumi.String("web"), DomainName: bucket.BucketRegionalDomainName, OriginAccessControlId: oac.ID()},
@@ -200,7 +200,7 @@ func deploy(ctx *pulumi.Context) error {
 		if strings.HasPrefix(key, "assets/") {
 			cacheControl = "public, max-age=31536000, immutable"
 		}
-		asset, err := s3.NewBucketObjectv2(ctx, "file-"+key, &s3.BucketObjectv2Args{Bucket: bucket.ID(), Key: pulumi.String(key), Source: pulumi.NewFileAsset(path), ContentType: pulumi.String(contentType), CacheControl: pulumi.String(cacheControl)}, pulumi.DependsOn(backendReady))
+		asset, err := s3.NewBucketObjectv2(ctx, "file-"+key, &s3.BucketObjectv2Args{Metadata: artifactMetadata(ctx), Tags: projectTags(ctx), Bucket: bucket.ID(), Key: pulumi.String(key), Source: pulumi.NewFileAsset(path), ContentType: pulumi.String(contentType), CacheControl: pulumi.String(cacheControl)}, pulumi.DependsOn(backendReady))
 		if err == nil {
 			staticAssets = append(staticAssets, asset)
 		}
@@ -215,7 +215,7 @@ func deploy(ctx *pulumi.Context) error {
 			return err
 		}
 		key = filepath.ToSlash(key)
-		_, err = s3.NewBucketObjectv2(ctx, "file-"+key, &s3.BucketObjectv2Args{Bucket: bucket.ID(), Key: pulumi.String(key), Source: pulumi.NewFileAsset(path), ContentType: pulumi.String(assetContentType(key)), CacheControl: pulumi.String("no-cache")}, pulumi.DependsOn(append(backendReady, staticAssets...)))
+		_, err = s3.NewBucketObjectv2(ctx, "file-"+key, &s3.BucketObjectv2Args{Metadata: artifactMetadata(ctx), Tags: projectTags(ctx), Bucket: bucket.ID(), Key: pulumi.String(key), Source: pulumi.NewFileAsset(path), ContentType: pulumi.String(assetContentType(key)), CacheControl: pulumi.String("no-cache")}, pulumi.DependsOn(append(backendReady, staticAssets...)))
 		if err != nil {
 			return err
 		}
@@ -224,7 +224,7 @@ func deploy(ctx *pulumi.Context) error {
 	ctx.Export("inferenceRegion", pulumi.String(inferenceRegion))
 	siteURL := pulumi.Sprintf("https://%s", distribution.DomainName)
 	if domain != "" {
-		_, err = cloudflare.NewDnsRecord(ctx, "site-dns", &cloudflare.DnsRecordArgs{ZoneId: pulumi.String(cfg.Require("cloudflareZoneId")), Name: pulumi.String(domain), Content: distribution.DomainName, Type: pulumi.String("CNAME"), Ttl: pulumi.Float64(60), Proxied: pulumi.Bool(false)})
+		_, err = cloudflare.NewDnsRecord(ctx, "site-dns", &cloudflare.DnsRecordArgs{Comment: pulumi.String(projectLabel(ctx)), ZoneId: pulumi.String(cfg.Require("cloudflareZoneId")), Name: pulumi.String(domain), Content: distribution.DomainName, Type: pulumi.String("CNAME"), Ttl: pulumi.Float64(60), Proxied: pulumi.Bool(false)})
 		if err != nil {
 			return err
 		}

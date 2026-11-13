@@ -27,11 +27,11 @@ func classificationQueue(ctx *pulumi.Context, role *iam.Role, stream pulumi.Stri
 	if out.Concurrency < 2 || out.Concurrency > 3 {
 		return out, fmt.Errorf("classificationConcurrency must be 2 or 3")
 	}
-	dlq, err := sqs.NewQueue(ctx, "classification-dead-letter", &sqs.QueueArgs{MessageRetentionSeconds: pulumi.Int(1209600), SqsManagedSseEnabled: pulumi.Bool(true)})
+	dlq, err := sqs.NewQueue(ctx, "classification-dead-letter", &sqs.QueueArgs{Tags: projectTags(ctx), MessageRetentionSeconds: pulumi.Int(1209600), SqsManagedSseEnabled: pulumi.Bool(true)})
 	if err != nil {
 		return out, err
 	}
-	out.Queue, err = sqs.NewQueue(ctx, "classification-queue", &sqs.QueueArgs{VisibilityTimeoutSeconds: pulumi.Int(360), MessageRetentionSeconds: pulumi.Int(345600), SqsManagedSseEnabled: pulumi.Bool(true), RedrivePolicy: dlq.Arn.ApplyT(func(arn string) string {
+	out.Queue, err = sqs.NewQueue(ctx, "classification-queue", &sqs.QueueArgs{Tags: projectTags(ctx), VisibilityTimeoutSeconds: pulumi.Int(360), MessageRetentionSeconds: pulumi.Int(345600), SqsManagedSseEnabled: pulumi.Bool(true), RedrivePolicy: dlq.Arn.ApplyT(func(arn string) string {
 		data, _ := json.Marshal(map[string]any{"deadLetterTargetArn": arn, "maxReceiveCount": 5})
 		return string(data)
 	}).(pulumi.StringOutput)})
@@ -45,7 +45,7 @@ func classificationQueue(ctx *pulumi.Context, role *iam.Role, stream pulumi.Stri
 	if err != nil {
 		return out, err
 	}
-	out.Logs, err = cloudwatch.NewLogGroup(ctx, "classification-logs", &cloudwatch.LogGroupArgs{RetentionInDays: pulumi.Int(14)})
+	out.Logs, err = cloudwatch.NewLogGroup(ctx, "classification-logs", &cloudwatch.LogGroupArgs{Tags: projectTags(ctx), RetentionInDays: pulumi.Int(14)})
 	if err != nil {
 		return out, err
 	}
@@ -58,11 +58,11 @@ func classificationQueue(ctx *pulumi.Context, role *iam.Role, stream pulumi.Stri
 	return out, err
 }
 func classificationMappings(ctx *pulumi.Context, q classificationInfrastructure, api, worker *lambda.Function, stream pulumi.StringInput) ([]pulumi.Resource, error) {
-	dispatch, err := lambda.NewEventSourceMapping(ctx, "classification-dispatch", &lambda.EventSourceMappingArgs{EventSourceArn: stream, FunctionName: api.Arn, StartingPosition: pulumi.String("TRIM_HORIZON"), BatchSize: pulumi.Int(1), FilterCriteria: &lambda.EventSourceMappingFilterCriteriaArgs{Filters: lambda.EventSourceMappingFilterCriteriaFilterArray{&lambda.EventSourceMappingFilterCriteriaFilterArgs{Pattern: pulumi.String(`{"eventName":["INSERT"],"dynamodb":{"NewImage":{"kind":{"S":["classification-job"]}}}}`)}}}}, pulumi.DependsOn([]pulumi.Resource{q.Permission}))
+	dispatch, err := lambda.NewEventSourceMapping(ctx, "classification-dispatch", &lambda.EventSourceMappingArgs{Tags: projectTags(ctx), EventSourceArn: stream, FunctionName: api.Arn, StartingPosition: pulumi.String("TRIM_HORIZON"), BatchSize: pulumi.Int(1), FilterCriteria: &lambda.EventSourceMappingFilterCriteriaArgs{Filters: lambda.EventSourceMappingFilterCriteriaFilterArray{&lambda.EventSourceMappingFilterCriteriaFilterArgs{Pattern: pulumi.String(`{"eventName":["INSERT"],"dynamodb":{"NewImage":{"kind":{"S":["classification-job"]}}}}`)}}}}, pulumi.DependsOn([]pulumi.Resource{q.Permission}))
 	if err != nil {
 		return nil, err
 	}
-	consumer, err := lambda.NewEventSourceMapping(ctx, "classification-consumer", &lambda.EventSourceMappingArgs{EventSourceArn: q.Queue.Arn, FunctionName: worker.Arn, BatchSize: pulumi.Int(1), FunctionResponseTypes: pulumi.ToStringArray([]string{"ReportBatchItemFailures"}), ScalingConfig: &lambda.EventSourceMappingScalingConfigArgs{MaximumConcurrency: pulumi.Int(q.Concurrency)}}, pulumi.DependsOn([]pulumi.Resource{q.Permission}))
+	consumer, err := lambda.NewEventSourceMapping(ctx, "classification-consumer", &lambda.EventSourceMappingArgs{Tags: projectTags(ctx), EventSourceArn: q.Queue.Arn, FunctionName: worker.Arn, BatchSize: pulumi.Int(1), FunctionResponseTypes: pulumi.ToStringArray([]string{"ReportBatchItemFailures"}), ScalingConfig: &lambda.EventSourceMappingScalingConfigArgs{MaximumConcurrency: pulumi.Int(q.Concurrency)}}, pulumi.DependsOn([]pulumi.Resource{q.Permission}))
 	if err != nil {
 		return nil, err
 	}

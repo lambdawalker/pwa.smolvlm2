@@ -97,6 +97,9 @@ func ensureState(root string, s *settings) error {
 			return err
 		}
 	}
+	if err := tagStateBucket(root, *s); err != nil {
+		return err
+	}
 	alias := "alias/little-lens-pulumi"
 	if s.KMSKey != "" {
 		alias = s.KMSKey
@@ -116,7 +119,7 @@ func ensureState(root string, s *settings) error {
 		if !strings.Contains(string(details), "NotFoundException") {
 			return fmt.Errorf("cannot access state KMS key: %s", details)
 		}
-		data, err = output(root, "aws", "kms", "create-key", "--description", "Audit Pulumi secrets", "--region", s.Region, "--query", "KeyMetadata.Arn", "--output", "text")
+		data, err = output(root, "aws", "kms", "create-key", "--description", deploymentLabel(*s), "--region", s.Region, "--query", "KeyMetadata.Arn", "--output", "text")
 		if err != nil {
 			return err
 		}
@@ -126,6 +129,17 @@ func ensureState(root string, s *settings) error {
 		}
 	} else {
 		s.KMSKey = strings.TrimSpace(string(data))
+	}
+	tags := []map[string]string{}
+	for key, value := range deploymentTags(*s) {
+		tags = append(tags, map[string]string{"TagKey": key, "TagValue": value})
+	}
+	payload, _ := json.Marshal(tags)
+	if err := run(root, "aws", "kms", "tag-resource", "--key-id", s.KMSKey, "--tags", string(payload), "--region", s.Region); err != nil {
+		return err
+	}
+	if err := run(root, "aws", "kms", "update-key-description", "--key-id", s.KMSKey, "--description", deploymentLabel(*s), "--region", s.Region); err != nil {
+		return err
 	}
 	return run(root, "aws", "kms", "enable-key-rotation", "--key-id", s.KMSKey, "--region", s.Region)
 }

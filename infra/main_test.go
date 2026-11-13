@@ -51,6 +51,30 @@ func TestCustomDomainInfrastructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := m.resources
+	label := "audit.apexfission.com | pwa.smolvlm2"
+	for _, name := range []string{"api", "classification-worker", "api-role", "trash-cleanup", "http-api", "api-stage", "api-integration", "web-access"} {
+		if r[name]["description"].StringValue() != label {
+			t.Fatalf("%s description missing label", name)
+		}
+	}
+	for _, name := range []string{"site", "web-cache", "site-dns", "certificate-dns"} {
+		if r[name]["comment"].StringValue() != label {
+			t.Fatalf("%s comment missing label", name)
+		}
+	}
+	for _, name := range []string{"api", "classification-worker", "classification-dispatch", "classification-consumer", "web", "api-artifacts", "api-code", "audit-photos", "audit-sessions", "api-role", "api-logs", "classification-logs", "classification-queue", "classification-dead-letter", "http-api", "api-stage", "site", "site-certificate", "trash-cleanup", "file-index.html"} {
+		tags := r[name]["tags"].ObjectValue()
+		if tags["Domain"].StringValue() != "audit.apexfission.com" || tags["Repository"].StringValue() != repositoryURL || tags["Stack"].StringValue() != "test" {
+			t.Fatalf("%s ownership tags missing", name)
+		}
+	}
+	if r["audit-users"]["userPoolTags"].ObjectValue()["Domain"].StringValue() != "audit.apexfission.com" {
+		t.Fatal("user pool ownership missing")
+	}
+	if r["api-code"]["metadata"].ObjectValue()["repository"].StringValue() != "https://github.com/lambdawalker/pwa.smolvlm2" {
+		t.Fatal("ZIP ownership metadata missing")
+	}
+
 	if r["audit-sessions"]["globalSecondaryIndexes"].ArrayValue()[0].ObjectValue()["name"].StringValue() != "classification-wake" {
 		t.Fatal("job recovery must use a bounded wake-time index")
 	}

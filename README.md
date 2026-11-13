@@ -136,3 +136,10 @@ The floating settings panel has separate Document settings and Categorization se
 Pending original files are saved in IndexedDB, scoped to the signed-in account and session. Reopen the session and use Resume uploads after interruption. Completed uploads and duplicates remove their pending record. Browser storage eviction, private browsing restrictions, or a full disk can prevent recovery; an on-screen notice explains when the page must remain open. Audit does not promise uploads will continue after the browser closes.
 
 Upload-date sorting uses an immutable server timestamp for new photos. Legacy photos return 1970-01-01T00:00:00Z as a fallback; category/description edits never change upload dates.
+
+
+### AWS ownership metadata
+
+Taggable infrastructure (including Lambda event mappings) and deployed S3 objects carry Project, Repository, Domain, Stack, and ManagedBy tags. S3 objects also include lowercase ownership metadata. Supported AWS descriptions and CloudFront/Cloudflare comments use `<configured hostname> | pwa.smolvlm2`, for example `audit.apexfission.com | pwa.smolvlm2`. Resource names and IDs remain unchanged. Resources without tagging or description support are identified through their parent resources.
+
+The wizard also labels its state bucket and KMS key on existing and new setups, preserving unrelated bucket tags. Its AWS identity needs `s3:GetBucketTagging`, `s3:PutBucketTagging`, `kms:TagResource`, and `kms:UpdateKeyDescription` in addition to the existing deployment permissions. Run the regular deployment wizard to apply these metadata updates.

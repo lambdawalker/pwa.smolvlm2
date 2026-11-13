@@ -17,7 +17,7 @@ func lambdaArtifact(ctx *pulumi.Context) (*s3.BucketV2, *s3.BucketObjectv2, stri
 		return nil, nil, "", err
 	}
 	sum := sha256.Sum256(data)
-	bucket, err := s3.NewBucketV2(ctx, "api-artifacts", &s3.BucketV2Args{})
+	bucket, err := s3.NewBucketV2(ctx, "api-artifacts", &s3.BucketV2Args{Tags: projectTags(ctx)})
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -25,7 +25,7 @@ func lambdaArtifact(ctx *pulumi.Context) (*s3.BucketV2, *s3.BucketObjectv2, stri
 	if err != nil {
 		return nil, nil, "", err
 	}
-	object, err := s3.NewBucketObjectv2(ctx, "api-code", &s3.BucketObjectv2Args{Bucket: bucket.ID(), Key: pulumi.String("lambda/" + hex.EncodeToString(sum[:]) + ".zip"), Source: pulumi.NewFileAsset("../backend/build/backend.zip"), ContentType: pulumi.String("application/zip"), ServerSideEncryption: pulumi.String("AES256")}, pulumi.DependsOn([]pulumi.Resource{block}))
+	object, err := s3.NewBucketObjectv2(ctx, "api-code", &s3.BucketObjectv2Args{Metadata: artifactMetadata(ctx), Tags: projectTags(ctx), Bucket: bucket.ID(), Key: pulumi.String("lambda/" + hex.EncodeToString(sum[:]) + ".zip"), Source: pulumi.NewFileAsset("../backend/build/backend.zip"), ContentType: pulumi.String("application/zip"), ServerSideEncryption: pulumi.String("AES256")}, pulumi.DependsOn([]pulumi.Resource{block}))
 	if err != nil {
 		return nil, nil, "", err
 	}

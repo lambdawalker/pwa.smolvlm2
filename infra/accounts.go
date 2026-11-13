@@ -11,7 +11,7 @@ import (
 )
 
 func accountInfrastructure(ctx *pulumi.Context, role *iam.Role) (pulumi.StringMap, error) {
-	pool, e := cognito.NewUserPool(ctx, "audit-users", &cognito.UserPoolArgs{UsernameAttributes: pulumi.ToStringArray([]string{"email"}), AutoVerifiedAttributes: pulumi.ToStringArray([]string{"email"}), UsernameConfiguration: &cognito.UserPoolUsernameConfigurationArgs{CaseSensitive: pulumi.Bool(false)}, PasswordPolicy: &cognito.UserPoolPasswordPolicyArgs{MinimumLength: pulumi.Int(12), RequireLowercase: pulumi.Bool(true), RequireUppercase: pulumi.Bool(true), RequireNumbers: pulumi.Bool(true), RequireSymbols: pulumi.Bool(false)}})
+	pool, e := cognito.NewUserPool(ctx, "audit-users", &cognito.UserPoolArgs{UserPoolTags: projectTags(ctx), UsernameAttributes: pulumi.ToStringArray([]string{"email"}), AutoVerifiedAttributes: pulumi.ToStringArray([]string{"email"}), UsernameConfiguration: &cognito.UserPoolUsernameConfigurationArgs{CaseSensitive: pulumi.Bool(false)}, PasswordPolicy: &cognito.UserPoolPasswordPolicyArgs{MinimumLength: pulumi.Int(12), RequireLowercase: pulumi.Bool(true), RequireUppercase: pulumi.Bool(true), RequireNumbers: pulumi.Bool(true), RequireSymbols: pulumi.Bool(false)}})
 	if e != nil {
 		return nil, e
 	}
@@ -19,11 +19,11 @@ func accountInfrastructure(ctx *pulumi.Context, role *iam.Role) (pulumi.StringMa
 	if e != nil {
 		return nil, e
 	}
-	table, e := dynamodb.NewTable(ctx, "audit-sessions", &dynamodb.TableArgs{BillingMode: pulumi.String("PAY_PER_REQUEST"), StreamEnabled: pulumi.Bool(true), StreamViewType: pulumi.String("NEW_AND_OLD_IMAGES"), HashKey: pulumi.String("pk"), RangeKey: pulumi.String("sk"), Attributes: dynamodb.TableAttributeArray{&dynamodb.TableAttributeArgs{Name: pulumi.String("pk"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("sk"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("jobPending"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("jobWakeAt"), Type: pulumi.String("N")}}, GlobalSecondaryIndexes: dynamodb.TableGlobalSecondaryIndexArray{&dynamodb.TableGlobalSecondaryIndexArgs{Name: pulumi.String("classification-wake"), HashKey: pulumi.String("jobPending"), RangeKey: pulumi.String("jobWakeAt"), ProjectionType: pulumi.String("ALL")}}, ServerSideEncryption: &dynamodb.TableServerSideEncryptionArgs{Enabled: pulumi.Bool(true)}})
+	table, e := dynamodb.NewTable(ctx, "audit-sessions", &dynamodb.TableArgs{Tags: projectTags(ctx), BillingMode: pulumi.String("PAY_PER_REQUEST"), StreamEnabled: pulumi.Bool(true), StreamViewType: pulumi.String("NEW_AND_OLD_IMAGES"), HashKey: pulumi.String("pk"), RangeKey: pulumi.String("sk"), Attributes: dynamodb.TableAttributeArray{&dynamodb.TableAttributeArgs{Name: pulumi.String("pk"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("sk"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("jobPending"), Type: pulumi.String("S")}, &dynamodb.TableAttributeArgs{Name: pulumi.String("jobWakeAt"), Type: pulumi.String("N")}}, GlobalSecondaryIndexes: dynamodb.TableGlobalSecondaryIndexArray{&dynamodb.TableGlobalSecondaryIndexArgs{Name: pulumi.String("classification-wake"), HashKey: pulumi.String("jobPending"), RangeKey: pulumi.String("jobWakeAt"), ProjectionType: pulumi.String("ALL")}}, ServerSideEncryption: &dynamodb.TableServerSideEncryptionArgs{Enabled: pulumi.Bool(true)}})
 	if e != nil {
 		return nil, e
 	}
-	bucket, e := s3.NewBucketV2(ctx, "audit-photos", &s3.BucketV2Args{})
+	bucket, e := s3.NewBucketV2(ctx, "audit-photos", &s3.BucketV2Args{Tags: projectTags(ctx)})
 	if e != nil {
 		return nil, e
 	}
