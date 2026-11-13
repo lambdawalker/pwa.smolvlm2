@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"strings"
 )
 
@@ -40,20 +42,34 @@ func mergeBucketTags(existing []bucketTag, metadata map[string]string) []bucketT
 	}
 	return result
 }
-func tagStateBucket(root string, s settings) error {
+func stateBucketTagReadArgs(s settings) []string {
+	return []string{"s3api", "get-bucket-tagging", "--bucket", s.StateBucket, "--expected-bucket-owner", s.Account, "--region", s.Region, "--output", "json", "--no-cli-pager"}
+}
+func readStateBucketTags(cmd *exec.Cmd) ([]bucketTag, error) {
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	data, err := cmd.Output()
+	if err != nil {
+		if strings.Contains(stderr.String(), "(NoSuchTagSet)") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read state bucket tags: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
 	var existing struct {
 		TagSet []bucketTag `json:"TagSet"`
 	}
-	cmd := command(root, "aws", "s3api", "get-bucket-tagging", "--bucket", s.StateBucket, "--expected-bucket-owner", s.Account, "--region", s.Region)
-	data, err := cmd.CombinedOutput()
+	if err = json.Unmarshal(data, &existing); err != nil {
+		return nil, fmt.Errorf("decode AWS state bucket tags (expected JSON): %w", err)
+	}
+	return existing.TagSet, nil
+}
+func tagStateBucket(root string, s settings) error {
+	tags, err := readStateBucketTags(command(root, "aws", stateBucketTagReadArgs(s)...))
 	if err != nil {
-		if !strings.Contains(string(data), "NoSuchTagSet") {
-			return fmt.Errorf("read state bucket tags: %s", strings.TrimSpace(string(data)))
-		}
-	} else if err = json.Unmarshal(data, &existing); err != nil {
 		return err
 	}
-	existing.TagSet = mergeBucketTags(existing.TagSet, deploymentTags(s))
-	payload, _ := json.Marshal(existing)
+	payload, _ := json.Marshal(struct {
+		TagSet []bucketTag `json:"TagSet"`
+	}{mergeBucketTags(tags, deploymentTags(s))})
 	return run(root, "aws", "s3api", "put-bucket-tagging", "--bucket", s.StateBucket, "--expected-bucket-owner", s.Account, "--region", s.Region, "--tagging", string(payload))
 }
