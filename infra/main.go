@@ -86,7 +86,7 @@ func deploy(ctx *pulumi.Context) error {
 		return err
 	}
 
-	worker, err := lambda.NewFunction(ctx, "classification-worker", &lambda.FunctionArgs{Description: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx), Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(60), ReservedConcurrentExecutions: pulumi.Int(queue.Concurrency), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: queue.Logs.Name}}, pulumi.DependsOn(apiDependencies))
+	worker, err := lambda.NewFunction(ctx, "classification-worker", &lambda.FunctionArgs{Description: pulumi.String(projectLabel(ctx)), Tags: projectTags(ctx), Role: role.Arn, Runtime: pulumi.String("provided.al2023"), Handler: pulumi.String("bootstrap"), Architectures: pulumi.StringArray{pulumi.String("arm64")}, S3Bucket: artifactBucket.ID(), S3Key: artifact.Key, SourceCodeHash: pulumi.String(codeHash), MemorySize: pulumi.Int(256), Timeout: pulumi.Int(60), ReservedConcurrentExecutions: pulumi.Int(-1), Environment: &lambda.FunctionEnvironmentArgs{Variables: accountEnv}, LoggingConfig: &lambda.FunctionLoggingConfigArgs{LogFormat: pulumi.String("Text"), LogGroup: queue.Logs.Name}}, pulumi.DependsOn(apiDependencies))
 	if err != nil {
 		return err
 	}

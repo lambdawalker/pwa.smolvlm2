@@ -87,8 +87,11 @@ func TestCustomDomainInfrastructure(t *testing.T) {
 	if r["classification-queue"]["visibilityTimeoutSeconds"].NumberValue() != 360 || r["classification-worker"]["timeout"].NumberValue() != 60 {
 		t.Fatal("queue visibility must allow worker retries")
 	}
-	if r["classification-worker"]["reservedConcurrentExecutions"].NumberValue() != 2 {
-		t.Fatal("worker concurrency must default to two")
+	if r["classification-worker"]["reservedConcurrentExecutions"].NumberValue() != -1 {
+		t.Fatal("worker must use unreserved capacity")
+	}
+	if r["classification-consumer"]["scalingConfig"].ObjectValue()["maximumConcurrency"].NumberValue() != 2 {
+		t.Fatal("SQS must still limit worker concurrency to two")
 	}
 	if r["classification-consumer"]["functionResponseTypes"].ArrayValue()[0].StringValue() != "ReportBatchItemFailures" {
 		t.Fatal("partial queue failures must be reported")
