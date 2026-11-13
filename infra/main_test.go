@@ -68,7 +68,7 @@ func TestCustomDomainInfrastructure(t *testing.T) {
 			t.Fatalf("%s ownership tags missing", name)
 		}
 	}
-	if r["audit-users"]["userPoolTags"].ObjectValue()["Domain"].StringValue() != "audit.apexfission.com" {
+	if r["audit-users"]["tags"].ObjectValue()["Domain"].StringValue() != "audit.apexfission.com" {
 		t.Fatal("user pool ownership missing")
 	}
 	if r["api-code"]["metadata"].ObjectValue()["repository"].StringValue() != "https://github.com/lambdawalker/pwa.smolvlm2" {

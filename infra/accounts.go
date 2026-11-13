@@ -11,7 +11,7 @@ import (
 )
 
 func accountInfrastructure(ctx *pulumi.Context, role *iam.Role) (pulumi.StringMap, error) {
-	pool, e := cognito.NewUserPool(ctx, "audit-users", &cognito.UserPoolArgs{UserPoolTags: projectTags(ctx), UsernameAttributes: pulumi.ToStringArray([]string{"email"}), AutoVerifiedAttributes: pulumi.ToStringArray([]string{"email"}), UsernameConfiguration: &cognito.UserPoolUsernameConfigurationArgs{CaseSensitive: pulumi.Bool(false)}, PasswordPolicy: &cognito.UserPoolPasswordPolicyArgs{MinimumLength: pulumi.Int(12), RequireLowercase: pulumi.Bool(true), RequireUppercase: pulumi.Bool(true), RequireNumbers: pulumi.Bool(true), RequireSymbols: pulumi.Bool(false)}})
+	pool, e := cognito.NewUserPool(ctx, "audit-users", &cognito.UserPoolArgs{Tags: projectTags(ctx), UsernameAttributes: pulumi.ToStringArray([]string{"email"}), AutoVerifiedAttributes: pulumi.ToStringArray([]string{"email"}), UsernameConfiguration: &cognito.UserPoolUsernameConfigurationArgs{CaseSensitive: pulumi.Bool(false)}, PasswordPolicy: &cognito.UserPoolPasswordPolicyArgs{MinimumLength: pulumi.Int(12), RequireLowercase: pulumi.Bool(true), RequireUppercase: pulumi.Bool(true), RequireNumbers: pulumi.Bool(true), RequireSymbols: pulumi.Bool(false)}})
 	if e != nil {
 		return nil, e
 	}
